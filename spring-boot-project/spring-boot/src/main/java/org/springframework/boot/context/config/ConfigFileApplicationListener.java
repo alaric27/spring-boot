@@ -159,6 +159,7 @@ public class ConfigFileApplicationListener
 
 	@Override
 	public void onApplicationEvent(ApplicationEvent event) {
+		// 处理准备环境的事件
 		if (event instanceof ApplicationEnvironmentPreparedEvent) {
 			onApplicationEnvironmentPreparedEvent(
 					(ApplicationEnvironmentPreparedEvent) event);
@@ -170,9 +171,14 @@ public class ConfigFileApplicationListener
 
 	private void onApplicationEnvironmentPreparedEvent(
 			ApplicationEnvironmentPreparedEvent event) {
+
+		// 这里获取 EnvironmentPostProcessor 类型的处理器
 		List<EnvironmentPostProcessor> postProcessors = loadPostProcessors();
 		postProcessors.add(this);
 		AnnotationAwareOrderComparator.sort(postProcessors);
+
+		// ConfigFileApplicationListener本身也是 EnvironmentPostProcessor 类型的处理器
+		// 这里会调用到 ConfigFileApplicationListener的postProcessEnvironment 方法
 		for (EnvironmentPostProcessor postProcessor : postProcessors) {
 			postProcessor.postProcessEnvironment(event.getEnvironment(),
 					event.getSpringApplication());
@@ -203,7 +209,9 @@ public class ConfigFileApplicationListener
 	 */
 	protected void addPropertySources(ConfigurableEnvironment environment,
 			ResourceLoader resourceLoader) {
+		// 添加随机数属性
 		RandomValuePropertySource.addToEnvironment(environment);
+		// 加载application配置文件
 		new Loader(environment, resourceLoader).load();
 	}
 
@@ -329,6 +337,7 @@ public class ConfigFileApplicationListener
 				if (profile != null && !profile.isDefaultProfile()) {
 					addProfileToEnvironment(profile.getName());
 				}
+				// 加载application配置文件
 				load(profile, this::getPositiveProfileFilter,
 						addToLoaded(MutablePropertySources::addLast, false));
 				this.processedProfiles.add(profile);
@@ -636,6 +645,12 @@ public class ConfigFileApplicationListener
 			this.environment.addActiveProfile(profile);
 		}
 
+		/**
+		 * application配置文件的搜索位置
+		 * 如果环境变量配置的有，则使用环境变量的
+		 * 否则使用默认位置的 classpath:/,classpath:/config/,file:./,file:./config/
+		 * @return
+		 */
 		private Set<String> getSearchLocations() {
 			if (this.environment.containsProperty(CONFIG_LOCATION_PROPERTY)) {
 				return getSearchLocations(CONFIG_LOCATION_PROPERTY);

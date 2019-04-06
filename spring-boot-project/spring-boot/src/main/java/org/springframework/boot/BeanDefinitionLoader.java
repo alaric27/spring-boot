@@ -131,6 +131,7 @@ class BeanDefinitionLoader {
 
 	private int load(Object source) {
 		Assert.notNull(source, "Source must not be null");
+		// 如果是 类对象 调用加载类资源的方法
 		if (source instanceof Class<?>) {
 			return load((Class<?>) source);
 		}
@@ -155,6 +156,7 @@ class BeanDefinitionLoader {
 			load(loader);
 		}
 		if (isComponent(source)) {
+			// 调用Spring的register注册该bean
 			this.annotatedReader.register(source);
 			return 1;
 		}

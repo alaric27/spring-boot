@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Diagram>
+  <ID>JAVA</ID>
+  <OriginalElement>org.springframework.boot.Banner</OriginalElement>
+  <nodes>
+    <node x="592.0" y="79.0">org.springframework.boot.SpringBootBanner</node>
+    <node x="303.5" y="0.0">org.springframework.boot.Banner</node>
+    <node x="119.0" y="79.0">org.springframework.boot.SpringApplicationBannerPrinter.PrintedBanner</node>
+    <node x="0.0" y="79.0">org.springframework.boot.SpringApplicationBannerPrinter.Banners</node>
+    <node x="444.0" y="79.0">org.springframework.boot.ImageBanner</node>
+    <node x="275.0" y="79.0">org.springframework.boot.ResourceBanner</node>
+  </nodes>
+  <notes />
+  <edges>
+    <edge source="org.springframework.boot.SpringApplicationBannerPrinter.PrintedBanner" target="org.springframework.boot.Banner">
+      <point x="0.0" y="-14.5" />
+      <point x="187.0" y="59.0" />
+      <point x="331.1" y="59.0" />
+      <point x="-18.399999999999977" y="14.5" />
+    </edge>
+    <edge source="org.springframework.boot.SpringApplicationBannerPrinter.Banners" target="org.springframework.boot.Banner">
+      <point x="0.0" y="-14.5" />
+      <point x="49.5" y="49.0" />
+      <point x="312.7" y="49.0" />
+      <point x="-36.80000000000001" y="14.5" />
+    </edge>
+    <edge source="org.springframework.boot.ResourceBanner" target="org.springframework.boot.Banner">
+      <point x="0.0" y="-14.5" />
+      <point x="0.0" y="14.5" />
+    </edge>
+    <edge source="org.springframework.boot.SpringBootBanner" target="org.springframework.boot.Banner">
+      <point x="0.0" y="-14.5" />
+      <point x="673.0" y="49.0" />
+      <point x="386.3" y="49.0" />
+      <point x="36.80000000000001" y="14.5" />
+    </edge>
+    <edge source="org.springframework.boot.ImageBanner" target="org.springframework.boot.Banner">
+      <point x="0.0" y="-14.5" />
+      <point x="508.0" y="59.0" />
+      <point x="367.9" y="59.0" />
+      <point x="18.399999999999977" y="14.5" />
+    </edge>
+  </edges>
+  <settings layout="Hierarchic Group" zoom="1.0" x="377.0" y="54.0" />
+  <SelectedNodes />
+  <Categories />
+  <SCOPE>All</SCOPE>
+  <VISIBILITY>private</VISIBILITY>
+</Diagram>
+

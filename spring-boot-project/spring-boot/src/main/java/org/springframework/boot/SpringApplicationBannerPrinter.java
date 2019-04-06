@@ -67,25 +67,32 @@ class SpringApplicationBannerPrinter {
 	}
 
 	public Banner print(Environment environment, Class<?> sourceClass, PrintStream out) {
+		// 获取banner对象
 		Banner banner = getBanner(environment);
+		// 打印banner
 		banner.printBanner(environment, sourceClass, out);
 		return new PrintedBanner(banner, sourceClass);
 	}
 
 	private Banner getBanner(Environment environment) {
 		Banners banners = new Banners();
+		// 获取图片banner."gif", "jpg", "png"
 		banners.addIfNotNull(getImageBanner(environment));
+		// 获取banner.txt
 		banners.addIfNotNull(getTextBanner(environment));
+		// 如果设置了banner则返回
 		if (banners.hasAtLeastOneBanner()) {
 			return banners;
 		}
 		if (this.fallbackBanner != null) {
 			return this.fallbackBanner;
 		}
+		// 返回默认的banner
 		return DEFAULT_BANNER;
 	}
 
 	private Banner getTextBanner(Environment environment) {
+		// 如果指定了位置 spring.banner.location,则使用指定位置，否则使用classpath下的 banner.txt
 		String location = environment.getProperty(BANNER_LOCATION_PROPERTY,
 				DEFAULT_BANNER_LOCATION);
 		Resource resource = this.resourceLoader.getResource(location);
@@ -96,11 +103,13 @@ class SpringApplicationBannerPrinter {
 	}
 
 	private Banner getImageBanner(Environment environment) {
+		// 如果指定了banner地址，则加载指定的地址 spring.banner.image.location
 		String location = environment.getProperty(BANNER_IMAGE_LOCATION_PROPERTY);
 		if (StringUtils.hasLength(location)) {
 			Resource resource = this.resourceLoader.getResource(location);
 			return resource.exists() ? new ImageBanner(resource) : null;
 		}
+		// 在classpath路径下加载以banner开头，以"gif", "jpg", "png" 为后缀的资源
 		for (String ext : IMAGE_EXTENSION) {
 			Resource resource = this.resourceLoader.getResource("banner." + ext);
 			if (resource.exists()) {
