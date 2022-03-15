@@ -24,6 +24,7 @@ import java.util.jar.Manifest;
 import org.springframework.boot.loader.archive.Archive;
 
 /**
+ * 可执行归档文件执行器
  * Base class for executable archive {@link Launcher}s.
  *
  * @author Phillip Webb
