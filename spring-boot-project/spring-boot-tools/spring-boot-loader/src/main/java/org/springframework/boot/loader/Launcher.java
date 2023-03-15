@@ -31,6 +31,7 @@ import org.springframework.boot.loader.archive.JarFileArchive;
 import org.springframework.boot.loader.jar.JarFile;
 
 /**
+ * spring boot 启动器的基类
  * Base class for launchers that can start an application with a fully configured
  * classpath backed by one or more {@link Archive}s.
  *
@@ -96,6 +97,7 @@ public abstract class Launcher {
 	}
 
 	/**
+	 * 创建main方法
 	 * Create the {@code MainMethodRunner} used to launch the application.
 	 * @param mainClass the main class
 	 * @param args the incoming arguments

@@ -28,6 +28,7 @@ import org.springframework.boot.loader.archive.Archive;
 import org.springframework.boot.loader.archive.ExplodedArchive;
 
 /**
+ * 可执行归档文件执行器
  * Base class for executable archive {@link Launcher}s.
  *
  * @author Phillip Webb

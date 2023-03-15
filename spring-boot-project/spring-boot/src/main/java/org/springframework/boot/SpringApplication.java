@@ -186,6 +186,9 @@ public class SpringApplication {
 
 	private static final ThreadLocal<SpringApplicationHook> applicationHook = new ThreadLocal<>();
 
+	/**
+	 * 主类 的数组
+	 */
 	private final Set<Class<?>> primarySources;
 
 	private Set<String> sources = new LinkedHashSet<>();
@@ -202,6 +205,9 @@ public class SpringApplication {
 
 	private Banner banner;
 
+	/**
+	 * 资源加载器
+	 */
 	private ResourceLoader resourceLoader;
 
 	private BeanNameGenerator beanNameGenerator;
@@ -214,8 +220,14 @@ public class SpringApplication {
 
 	private boolean registerShutdownHook = true;
 
+	/**
+	 * ApplicationContextInitializer 数组
+	 */
 	private List<ApplicationContextInitializer<?>> initializers;
 
+	/**
+	 * ApplicationListener 数组
+	 */
 	private List<ApplicationListener<?>> listeners;
 
 	private Map<String, Object> defaultProperties;
@@ -267,14 +279,23 @@ public class SpringApplication {
 		this.resourceLoader = resourceLoader;
 		Assert.notNull(primarySources, "PrimarySources must not be null");
 		this.primarySources = new LinkedHashSet<>(Arrays.asList(primarySources));
+		// 设置webApplicationType 类型
 		this.webApplicationType = WebApplicationType.deduceFromClasspath();
 		this.bootstrapRegistryInitializers = new ArrayList<>(
 				getSpringFactoriesInstances(BootstrapRegistryInitializer.class));
+		// 加载 META-INF/spring.factories 文件中的 ApplicationContextInitializer类
 		setInitializers((Collection) getSpringFactoriesInstances(ApplicationContextInitializer.class));
+		// 加载 META-INF/spring.factories 文件中的 ApplicationListener类
 		setListeners((Collection) getSpringFactoriesInstances(ApplicationListener.class));
+
+		// 解析入口类
 		this.mainApplicationClass = deduceMainApplicationClass();
 	}
 
+	/**
+	 * 解析入口类，解析规则为，调用栈中包含main函数的即为入口类
+	 * @return
+	 */
 	private Class<?> deduceMainApplicationClass() {
 		return StackWalker.getInstance(StackWalker.Option.RETAIN_CLASS_REFERENCE)
 			.walk(this::findMainClass)
@@ -298,16 +319,28 @@ public class SpringApplication {
 		DefaultBootstrapContext bootstrapContext = createBootstrapContext();
 		ConfigurableApplicationContext context = null;
 		configureHeadlessProperty();
+		// 创建所有 Spring 运行监听器并发布应用启动事件
 		SpringApplicationRunListeners listeners = getRunListeners(args);
 		listeners.starting(bootstrapContext, this.mainApplicationClass);
 		try {
+			// 封装main函数入参
 			ApplicationArguments applicationArguments = new DefaultApplicationArguments(args);
+			//  加载属性配置。执行完成后，所有的 environment 的属性都会加载进来，包括 application.properties 和外部的属性配置
 			ConfigurableEnvironment environment = prepareEnvironment(listeners, bootstrapContext, applicationArguments);
+			// 打印 Spring Banner
 			Banner printedBanner = printBanner(environment);
+
+			// 创建 Spring 容器。
 			context = createApplicationContext();
 			context.setApplicationStartup(this.applicationStartup);
+
+			// 主要是调用所有初始化类的 initialize 方法
 			prepareContext(bootstrapContext, context, environment, listeners, applicationArguments, printedBanner);
+
+			// 初始化 Spring 容器。
 			refreshContext(context);
+
+			// 执行 Spring 容器的初始化的后置逻辑。默认实现为空。
 			afterRefresh(context, applicationArguments);
 			Duration timeTakenToStartup = Duration.ofNanos(System.nanoTime() - startTime);
 			if (this.logStartupInfo) {
@@ -348,9 +381,15 @@ public class SpringApplication {
 	private ConfigurableEnvironment prepareEnvironment(SpringApplicationRunListeners listeners,
 			DefaultBootstrapContext bootstrapContext, ApplicationArguments applicationArguments) {
 		// Create and configure the environment
+		// 创建 ConfigurableEnvironment 对象
 		ConfigurableEnvironment environment = getOrCreateEnvironment();
+
+		// 配置环境
 		configureEnvironment(environment, applicationArguments.getSourceArgs());
 		ConfigurationPropertySources.attach(environment);
+
+		// 触发环境配置事件，这里会调用 ConfigFileApplicationListener 的监听事件，
+		// 在ConfigFileApplicationListener 中完成了application.properties文件的加载
 		listeners.environmentPrepared(bootstrapContext, environment);
 		DefaultPropertiesPropertySource.moveToEnd(environment);
 		Assert.state(!environment.containsProperty("spring.main.environment-prefix"),
@@ -382,7 +421,10 @@ public class SpringApplication {
 		context.setEnvironment(environment);
 		postProcessApplicationContext(context);
 		addAotGeneratedInitializerIfNecessary(this.initializers);
+		// 调用 ApplicationContextInitializer 的 initialize 方法
 		applyInitializers(context);
+
+		// 通知  contextPrepared 事件
 		listeners.contextPrepared(context);
 		bootstrapContext.close(context);
 		if (this.logStartupInfo) {
@@ -407,8 +449,8 @@ public class SpringApplication {
 		context.addBeanFactoryPostProcessor(new PropertySourceOrderingBeanFactoryPostProcessor(context));
 		if (!AotDetector.useGeneratedArtifacts()) {
 			// Load the sources
-			Set<Object> sources = getAllSources();
-			Assert.notEmpty(sources, "Sources must not be empty");
+			// 加载所有的sources,主函数所在类也在其中Set<Object> sources = getAllSources();
+			Assert.notEmpty(sources, "Sources must not be empty");// 注册sources
 			load(context, sources.toArray(new Object[0]));
 		}
 		listeners.contextLoaded(context);
@@ -487,6 +529,7 @@ public class SpringApplication {
 		if (this.addConversionService) {
 			environment.setConversionService(new ApplicationConversionService());
 		}
+		// 设置main函数入参为环境变量的属性
 		configurePropertySources(environment, args);
 		configureProfiles(environment, args);
 	}
@@ -553,6 +596,7 @@ public class SpringApplication {
 		if (this.bannerMode == Mode.LOG) {
 			return bannerPrinter.print(environment, this.mainApplicationClass, logger);
 		}
+		// 打印banner
 		return bannerPrinter.print(environment, this.mainApplicationClass, System.out);
 	}
 
@@ -664,6 +708,7 @@ public class SpringApplication {
 		if (logger.isDebugEnabled()) {
 			logger.debug("Loading source " + StringUtils.arrayToCommaDelimitedString(sources));
 		}
+		// 创建BeanDefinitionLoader 会创建用到的BeanDefinitionReader 和 ClassPathBeanDefinitionScanner
 		BeanDefinitionLoader loader = createBeanDefinitionLoader(getBeanDefinitionRegistry(context), sources);
 		if (this.beanNameGenerator != null) {
 			loader.setBeanNameGenerator(this.beanNameGenerator);
@@ -674,6 +719,7 @@ public class SpringApplication {
 		if (this.environment != null) {
 			loader.setEnvironment(this.environment);
 		}
+		// 调用load()方，解析并注册bean
 		loader.load();
 	}
 

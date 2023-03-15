@@ -132,6 +132,7 @@ class BeanDefinitionLoader {
 
 	private void load(Object source) {
 		Assert.notNull(source, "Source must not be null");
+		// 如果是 类对象 调用加载类资源的方法
 		if (source instanceof Class<?> clazz) {
 			load(clazz);
 			return;
@@ -158,6 +159,7 @@ class BeanDefinitionLoader {
 			((GroovyBeanDefinitionReader) this.groovyReader).beans(loader.getBeans());
 		}
 		if (isEligible(source)) {
+			// 调用Spring的register注册该bean
 			this.annotatedReader.register(source);
 		}
 	}

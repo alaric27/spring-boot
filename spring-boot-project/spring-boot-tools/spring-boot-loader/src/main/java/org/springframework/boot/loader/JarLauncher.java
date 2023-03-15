@@ -20,6 +20,7 @@ import org.springframework.boot.loader.archive.Archive;
 import org.springframework.boot.loader.archive.Archive.EntryFilter;
 
 /**
+ * jar包启动器
  * {@link Launcher} for JAR based archives. This launcher assumes that dependency jars are
  * included inside a {@code /BOOT-INF/lib} directory and that application classes are
  * included inside a {@code /BOOT-INF/classes} directory.
@@ -46,6 +47,10 @@ public class JarLauncher extends ExecutableArchiveLauncher {
 		super(archive);
 	}
 
+	/**
+	 * @param entry the jar entry
+	 * @return
+	 */
 	@Override
 	protected boolean isPostProcessingClassPathArchives() {
 		return false;

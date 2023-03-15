@@ -25,6 +25,7 @@ import java.util.jar.Manifest;
 import org.springframework.boot.loader.Launcher;
 
 /**
+ * 归档文件的基础抽象类
  * An archive that can be launched by the {@link Launcher}.
  *
  * @author Phillip Webb

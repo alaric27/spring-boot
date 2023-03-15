@@ -63,7 +63,9 @@ class SpringApplicationBannerPrinter {
 	}
 
 	Banner print(Environment environment, Class<?> sourceClass, PrintStream out) {
+		// 获取banner对象
 		Banner banner = getBanner(environment);
+		// 打印banner
 		banner.printBanner(environment, sourceClass, out);
 		return new PrintedBanner(banner, sourceClass);
 	}
@@ -76,10 +78,12 @@ class SpringApplicationBannerPrinter {
 		if (this.fallbackBanner != null) {
 			return this.fallbackBanner;
 		}
+		// 返回默认的banner
 		return DEFAULT_BANNER;
 	}
 
 	private Banner getTextBanner(Environment environment) {
+		// 如果指定了位置 spring.banner.location,则使用指定位置，否则使用classpath下的 banner.txt
 		String location = environment.getProperty(BANNER_LOCATION_PROPERTY, DEFAULT_BANNER_LOCATION);
 		Resource resource = this.resourceLoader.getResource(location);
 		try {

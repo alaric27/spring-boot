@@ -31,18 +31,21 @@ import org.springframework.util.ClassUtils;
 public enum WebApplicationType {
 
 	/**
+	 * 不需要再web容器的环境下运行，也就是普通的工程
 	 * The application should not run as a web application and should not start an
 	 * embedded web server.
 	 */
 	NONE,
 
 	/**
+	 * 基于servlet的Web项目
 	 * The application should run as a servlet-based web application and should start an
 	 * embedded servlet web server.
 	 */
 	SERVLET,
 
 	/**
+	 * 响应式web应用 reactive web Spring5 版本的新特性
 	 * The application should run as a reactive web application and should start an
 	 * embedded reactive web server.
 	 */
@@ -58,15 +61,30 @@ public enum WebApplicationType {
 	private static final String JERSEY_INDICATOR_CLASS = "org.glassfish.jersey.servlet.ServletContainer";
 
 	static WebApplicationType deduceFromClasspath() {
+
+		/**
+		 * 如果当前classpath下
+		 * 存在 org.springframework.web.reactive.DispatcherHandler
+		 * 并且不存在 org.springframework.web.servlet.DispatcherServlet
+		 * 并且不存在 org.glassfish.jersey.servlet.ServletContainer
+		 * 则认为类型为响应式web应用
+		 */
 		if (ClassUtils.isPresent(WEBFLUX_INDICATOR_CLASS, null) && !ClassUtils.isPresent(WEBMVC_INDICATOR_CLASS, null)
 				&& !ClassUtils.isPresent(JERSEY_INDICATOR_CLASS, null)) {
 			return WebApplicationType.REACTIVE;
 		}
+
+		/**
+		 * 如果当前classpath下
+		 * 不存在 javax.servlet.Servlet
+		 * 或者不存在 org.springframework.web.context.ConfigurableWebApplicationContext
+		 */
 		for (String className : SERVLET_INDICATOR_CLASSES) {
 			if (!ClassUtils.isPresent(className, null)) {
 				return WebApplicationType.NONE;
 			}
 		}
+		// 返回基于servlet的Web项目
 		return WebApplicationType.SERVLET;
 	}
 

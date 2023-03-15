@@ -19,6 +19,7 @@ package org.springframework.boot.loader;
 import java.lang.reflect.Method;
 
 /**
+ * 调用Main方法
  * Utility class that is used by {@link Launcher}s to call a main method. The class
  * containing the main method is loaded using the thread context class loader.
  *
