@@ -248,6 +248,9 @@ public class SpringApplication {
 
 	private ApplicationContextFactory applicationContextFactory = ApplicationContextFactory.DEFAULT;
 
+	/**
+	 * 收集启动监控
+	 */
 	private ApplicationStartup applicationStartup = ApplicationStartup.DEFAULT;
 
 	/**
@@ -281,6 +284,7 @@ public class SpringApplication {
 		this.primarySources = new LinkedHashSet<>(Arrays.asList(primarySources));
 		// 设置webApplicationType 类型
 		this.webApplicationType = WebApplicationType.deduceFromClasspath();
+		// 从spring.factories获取 BootstrapRegistryInitializer
 		this.bootstrapRegistryInitializers = new ArrayList<>(
 				getSpringFactoriesInstances(BootstrapRegistryInitializer.class));
 		// 加载 META-INF/spring.factories 文件中的 ApplicationContextInitializer类
@@ -719,7 +723,7 @@ public class SpringApplication {
 		if (this.environment != null) {
 			loader.setEnvironment(this.environment);
 		}
-		// 调用load()方，解析并注册bean
+		// 会向AnnotatedBeanDefinitionReader 注册source。用于加载解析bean
 		loader.load();
 	}
 
