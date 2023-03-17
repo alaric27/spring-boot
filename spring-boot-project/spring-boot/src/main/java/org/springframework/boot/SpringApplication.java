@@ -320,10 +320,11 @@ public class SpringApplication {
 	 */
 	public ConfigurableApplicationContext run(String... args) {
 		long startTime = System.nanoTime();
+		// 创建启动上下文
 		DefaultBootstrapContext bootstrapContext = createBootstrapContext();
 		ConfigurableApplicationContext context = null;
 		configureHeadlessProperty();
-		// 创建所有 Spring 运行监听器并发布应用启动事件
+		// Spring boot启动流程监听
 		SpringApplicationRunListeners listeners = getRunListeners(args);
 		listeners.starting(bootstrapContext, this.mainApplicationClass);
 		try {
@@ -334,14 +335,14 @@ public class SpringApplication {
 			// 打印 Spring Banner
 			Banner printedBanner = printBanner(environment);
 
-			// 创建 Spring 容器。
+			// 创建 Spring 容器, 根据webApplicationType创建不同的ApplicationContext, 在web环境中，一般是 AnnotationConfigServletWebServerApplicationContext
 			context = createApplicationContext();
 			context.setApplicationStartup(this.applicationStartup);
 
 			// 主要是调用所有初始化类的 initialize 方法
 			prepareContext(bootstrapContext, context, environment, listeners, applicationArguments, printedBanner);
 
-			// 初始化 Spring 容器。
+			// 刷新应用上下文, 触发AbstractApplicationContext的refresh
 			refreshContext(context);
 
 			// 执行 Spring 容器的初始化的后置逻辑。默认实现为空。
@@ -351,6 +352,8 @@ public class SpringApplication {
 				new StartupInfoLogger(this.mainApplicationClass).logStarted(getApplicationLog(), timeTakenToStartup);
 			}
 			listeners.started(context, timeTakenToStartup);
+
+			// 执行所有 Runner 运行器
 			callRunners(context, applicationArguments);
 		}
 		catch (Throwable ex) {
