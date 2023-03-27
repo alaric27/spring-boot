@@ -44,6 +44,7 @@ import org.springframework.context.annotation.EnableAspectJAutoProxy;
  * @see EnableAspectJAutoProxy
  */
 @AutoConfiguration
+// 仅在属性 spring.aop.auto缺失或者明确指定为true时生效
 @ConditionalOnProperty(prefix = "spring.aop", name = "auto", havingValue = "true", matchIfMissing = true)
 public class AopAutoConfiguration {
 
@@ -53,6 +54,7 @@ public class AopAutoConfiguration {
 
 		@Configuration(proxyBeanMethods = false)
 		@EnableAspectJAutoProxy(proxyTargetClass = false)
+		// 在配置参数 spring.aop.proxy-target-class 值被明确设置为 false 时生效
 		@ConditionalOnProperty(prefix = "spring.aop", name = "proxy-target-class", havingValue = "false")
 		static class JdkDynamicAutoProxyConfiguration {
 
@@ -60,6 +62,7 @@ public class AopAutoConfiguration {
 
 		@Configuration(proxyBeanMethods = false)
 		@EnableAspectJAutoProxy(proxyTargetClass = true)
+		// 在配置参数 spring.aop.proxy-target-class 值被明确设置为 true 时生效。没有设置该值时，默认使用cglib
 		@ConditionalOnProperty(prefix = "spring.aop", name = "proxy-target-class", havingValue = "true",
 				matchIfMissing = true)
 		static class CglibAutoProxyConfiguration {
