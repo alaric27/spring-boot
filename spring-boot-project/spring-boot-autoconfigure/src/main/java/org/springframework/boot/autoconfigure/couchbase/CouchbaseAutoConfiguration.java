@@ -41,14 +41,19 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnSingleCandidate;
 import org.springframework.boot.autoconfigure.couchbase.CouchbaseAutoConfiguration.CouchbaseCondition;
+import org.springframework.boot.autoconfigure.couchbase.CouchbaseProperties.Ssl;
 import org.springframework.boot.autoconfigure.couchbase.CouchbaseProperties.Timeouts;
 import org.springframework.boot.autoconfigure.jackson.JacksonAutoConfiguration;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.ssl.SslBundle;
+import org.springframework.boot.ssl.SslBundles;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Conditional;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.Ordered;
+import org.springframework.util.Assert;
 import org.springframework.util.ResourceUtils;
+import org.springframework.util.StringUtils;
 
 /**
  * {@link EnableAutoConfiguration Auto-configuration} for Couchbase.
@@ -69,34 +74,37 @@ public class CouchbaseAutoConfiguration {
 
 	private final CouchbaseProperties properties;
 
-	private final CouchbaseConnectionDetails connectionDetails;
-
-	CouchbaseAutoConfiguration(CouchbaseProperties properties,
-			ObjectProvider<CouchbaseConnectionDetails> connectionDetails) {
+	CouchbaseAutoConfiguration(CouchbaseProperties properties) {
 		this.properties = properties;
-		this.connectionDetails = connectionDetails
-			.getIfAvailable(() -> new PropertiesCouchbaseConnectionDetails(properties));
+	}
+
+	@Bean
+	@ConditionalOnMissingBean(CouchbaseConnectionDetails.class)
+	PropertiesCouchbaseConnectionDetails couchbaseConnectionDetails() {
+		return new PropertiesCouchbaseConnectionDetails(this.properties);
 	}
 
 	@Bean
 	@ConditionalOnMissingBean
-	public ClusterEnvironment couchbaseClusterEnvironment(
-			ObjectProvider<ClusterEnvironmentBuilderCustomizer> customizers) {
-		Builder builder = initializeEnvironmentBuilder();
+	public ClusterEnvironment couchbaseClusterEnvironment(CouchbaseConnectionDetails connectionDetails,
+			ObjectProvider<ClusterEnvironmentBuilderCustomizer> customizers, ObjectProvider<SslBundles> sslBundles) {
+		Builder builder = initializeEnvironmentBuilder(connectionDetails, sslBundles.getIfAvailable());
 		customizers.orderedStream().forEach((customizer) -> customizer.customize(builder));
 		return builder.build();
 	}
 
 	@Bean(destroyMethod = "disconnect")
 	@ConditionalOnMissingBean
-	public Cluster couchbaseCluster(ClusterEnvironment couchbaseClusterEnvironment) {
+	public Cluster couchbaseCluster(ClusterEnvironment couchbaseClusterEnvironment,
+			CouchbaseConnectionDetails connectionDetails) {
 		ClusterOptions options = ClusterOptions
-			.clusterOptions(this.connectionDetails.getUsername(), this.connectionDetails.getPassword())
+			.clusterOptions(connectionDetails.getUsername(), connectionDetails.getPassword())
 			.environment(couchbaseClusterEnvironment);
-		return Cluster.connect(this.connectionDetails.getConnectionString(), options);
+		return Cluster.connect(connectionDetails.getConnectionString(), options);
 	}
 
-	private ClusterEnvironment.Builder initializeEnvironmentBuilder() {
+	private ClusterEnvironment.Builder initializeEnvironmentBuilder(CouchbaseConnectionDetails connectionDetails,
+			SslBundles sslBundles) {
 		ClusterEnvironment.Builder builder = ClusterEnvironment.builder();
 		Timeouts timeouts = this.properties.getEnv().getTimeouts();
 		builder.timeoutConfig((config) -> config.kvTimeout(timeouts.getKeyValue())
@@ -112,15 +120,37 @@ public class CouchbaseAutoConfiguration {
 		builder.ioConfig((config) -> config.maxHttpConnections(io.getMaxEndpoints())
 			.numKvConnections(io.getMinEndpoints())
 			.idleHttpConnectionTimeout(io.getIdleHttpConnectionTimeout()));
-		if ((this.connectionDetails instanceof PropertiesCouchbaseConnectionDetails)
-				&& this.properties.getEnv().getSsl().getEnabled()) {
-			builder.securityConfig((config) -> config.enableTls(true)
-				.trustManagerFactory(getTrustManagerFactory(this.properties.getEnv().getSsl())));
+		if (this.properties.getEnv().getSsl().getEnabled()) {
+			configureSsl(builder, sslBundles);
 		}
 		return builder;
 	}
 
-	private TrustManagerFactory getTrustManagerFactory(CouchbaseProperties.Ssl ssl) {
+	private void configureSsl(Builder builder, SslBundles sslBundles) {
+		Ssl sslProperties = this.properties.getEnv().getSsl();
+		SslBundle sslBundle = (StringUtils.hasText(sslProperties.getBundle()))
+				? sslBundles.getBundle(sslProperties.getBundle()) : null;
+		Assert.state(sslBundle == null || !sslBundle.getOptions().isSpecified(),
+				"SSL Options cannot be specified with Couchbase");
+		builder.securityConfig((config) -> {
+			config.enableTls(true);
+			TrustManagerFactory trustManagerFactory = getTrustManagerFactory(sslProperties, sslBundle);
+			if (trustManagerFactory != null) {
+				config.trustManagerFactory(trustManagerFactory);
+			}
+		});
+	}
+
+	@SuppressWarnings("removal")
+	private TrustManagerFactory getTrustManagerFactory(CouchbaseProperties.Ssl sslProperties, SslBundle sslBundle) {
+		if (sslProperties.getKeyStore() != null) {
+			return loadTrustManagerFactory(sslProperties);
+		}
+		return (sslBundle != null) ? sslBundle.getManagers().getTrustManagerFactory() : null;
+	}
+
+	@SuppressWarnings("removal")
+	private TrustManagerFactory loadTrustManagerFactory(CouchbaseProperties.Ssl ssl) {
 		String resource = ssl.getKeyStore();
 		try {
 			TrustManagerFactory trustManagerFactory = TrustManagerFactory

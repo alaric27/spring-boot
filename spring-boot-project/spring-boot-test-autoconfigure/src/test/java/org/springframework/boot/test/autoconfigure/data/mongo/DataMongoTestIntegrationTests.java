@@ -25,13 +25,15 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 
 import org.springframework.beans.factory.NoSuchBeanDefinitionException;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.mongo.MongoServiceConnection;
+import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.boot.testcontainers.service.connection.ServiceConnectionAutoConfiguration;
 import org.springframework.boot.testsupport.testcontainers.DockerImageNames;
 import org.springframework.context.ApplicationContext;
 import org.springframework.data.mongodb.core.MongoTemplate;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
+import static org.springframework.boot.test.autoconfigure.AutoConfigurationImportedCondition.importedAutoConfiguration;
 
 /**
  * Sample test for {@link DataMongoTest @DataMongoTest}
@@ -46,7 +48,7 @@ import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 class DataMongoTestIntegrationTests {
 
 	@Container
-	@MongoServiceConnection
+	@ServiceConnection
 	static final MongoDBContainer mongoDB = new MongoDBContainer(DockerImageNames.mongo()).withStartupAttempts(5)
 		.withStartupTimeout(Duration.ofMinutes(5));
 
@@ -72,6 +74,11 @@ class DataMongoTestIntegrationTests {
 	void didNotInjectExampleService() {
 		assertThatExceptionOfType(NoSuchBeanDefinitionException.class)
 			.isThrownBy(() -> this.applicationContext.getBean(ExampleService.class));
+	}
+
+	@Test
+	void serviceConnectionAutoConfigurationWasImported() {
+		assertThat(this.applicationContext).has(importedAutoConfiguration(ServiceConnectionAutoConfiguration.class));
 	}
 
 }

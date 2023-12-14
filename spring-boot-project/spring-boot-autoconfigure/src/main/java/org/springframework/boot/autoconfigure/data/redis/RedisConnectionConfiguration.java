@@ -26,6 +26,7 @@ import org.springframework.boot.autoconfigure.data.redis.RedisConnectionDetails.
 import org.springframework.boot.autoconfigure.data.redis.RedisConnectionDetails.Node;
 import org.springframework.boot.autoconfigure.data.redis.RedisConnectionDetails.Sentinel;
 import org.springframework.boot.autoconfigure.data.redis.RedisProperties.Pool;
+import org.springframework.boot.ssl.SslBundles;
 import org.springframework.data.redis.connection.RedisClusterConfiguration;
 import org.springframework.data.redis.connection.RedisNode;
 import org.springframework.data.redis.connection.RedisPassword;
@@ -60,17 +61,19 @@ abstract class RedisConnectionConfiguration {
 
 	private final RedisConnectionDetails connectionDetails;
 
-	protected RedisConnectionConfiguration(RedisProperties properties,
+	private final SslBundles sslBundles;
+
+	protected RedisConnectionConfiguration(RedisProperties properties, RedisConnectionDetails connectionDetails,
 			ObjectProvider<RedisStandaloneConfiguration> standaloneConfigurationProvider,
 			ObjectProvider<RedisSentinelConfiguration> sentinelConfigurationProvider,
 			ObjectProvider<RedisClusterConfiguration> clusterConfigurationProvider,
-			ObjectProvider<RedisConnectionDetails> connectionDetailsProvider) {
+			ObjectProvider<SslBundles> sslBundles) {
 		this.properties = properties;
 		this.standaloneConfiguration = standaloneConfigurationProvider.getIfAvailable();
 		this.sentinelConfiguration = sentinelConfigurationProvider.getIfAvailable();
 		this.clusterConfiguration = clusterConfigurationProvider.getIfAvailable();
-		this.connectionDetails = connectionDetailsProvider
-			.getIfAvailable(() -> new PropertiesRedisConnectionDetails(properties));
+		this.connectionDetails = connectionDetails;
+		this.sslBundles = sslBundles.getIfAvailable();
 	}
 
 	protected final RedisStandaloneConfiguration getStandaloneConfig() {
@@ -141,6 +144,14 @@ abstract class RedisConnectionConfiguration {
 
 	protected final RedisProperties getProperties() {
 		return this.properties;
+	}
+
+	protected SslBundles getSslBundles() {
+		return this.sslBundles;
+	}
+
+	protected boolean isSslEnabled() {
+		return getProperties().getSsl().isEnabled();
 	}
 
 	protected boolean isPoolEnabled(Pool pool) {

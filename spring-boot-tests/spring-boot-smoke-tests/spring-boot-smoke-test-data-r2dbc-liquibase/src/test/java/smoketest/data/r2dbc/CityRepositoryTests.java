@@ -16,6 +16,8 @@
 
 package smoketest.data.r2dbc;
 
+import java.time.Duration;
+
 import org.junit.jupiter.api.Test;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
@@ -24,8 +26,7 @@ import reactor.test.StepVerifier;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.data.r2dbc.DataR2dbcTest;
-import org.springframework.boot.test.autoconfigure.jdbc.JdbcServiceConnection;
-import org.springframework.boot.test.autoconfigure.r2dbc.R2dbcServiceConnection;
+import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.boot.testsupport.testcontainers.DockerImageNames;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -42,8 +43,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class CityRepositoryTests {
 
 	@Container
-	@JdbcServiceConnection
-	@R2dbcServiceConnection
+	@ServiceConnection
 	static PostgreSQLContainer<?> postgresql = new PostgreSQLContainer<>(DockerImageNames.postgresql())
 		.withDatabaseName("test_liquibase");
 
@@ -54,7 +54,8 @@ class CityRepositoryTests {
 	void databaseHasBeenInitialized() {
 		StepVerifier.create(this.repository.findByState("DC").filter((city) -> city.getName().equals("Washington")))
 			.consumeNextWith((city) -> assertThat(city.getId()).isNotNull())
-			.verifyComplete();
+			.expectComplete()
+			.verify(Duration.ofSeconds(30));
 	}
 
 }

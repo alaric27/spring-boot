@@ -18,6 +18,8 @@ package org.springframework.boot.autoconfigure.liquibase;
 
 import javax.sql.DataSource;
 
+import liquibase.UpdateSummaryEnum;
+import liquibase.UpdateSummaryOutputEnum;
 import liquibase.change.DatabaseChange;
 import liquibase.integration.spring.SpringLiquibase;
 
@@ -86,12 +88,18 @@ public class LiquibaseAutoConfiguration {
 	public static class LiquibaseConfiguration {
 
 		@Bean
+		@ConditionalOnMissingBean(LiquibaseConnectionDetails.class)
+		PropertiesLiquibaseConnectionDetails liquibaseConnectionDetails(LiquibaseProperties properties,
+				ObjectProvider<JdbcConnectionDetails> jdbcConnectionDetails) {
+			return new PropertiesLiquibaseConnectionDetails(properties);
+		}
+
+		@Bean
 		public SpringLiquibase liquibase(ObjectProvider<DataSource> dataSource,
 				@LiquibaseDataSource ObjectProvider<DataSource> liquibaseDataSource, LiquibaseProperties properties,
-				ObjectProvider<JdbcConnectionDetails> connectionDetails) {
+				LiquibaseConnectionDetails connectionDetails) {
 			SpringLiquibase liquibase = createSpringLiquibase(liquibaseDataSource.getIfAvailable(),
-					dataSource.getIfUnique(),
-					connectionDetails.getIfAvailable(() -> new LiquibasePropertiesJdbcConnectionDetails(properties)));
+					dataSource.getIfUnique(), connectionDetails);
 			liquibase.setChangeLog(properties.getChangeLog());
 			liquibase.setClearCheckSums(properties.isClearChecksums());
 			liquibase.setContexts(properties.getContexts());
@@ -107,11 +115,18 @@ public class LiquibaseAutoConfiguration {
 			liquibase.setRollbackFile(properties.getRollbackFile());
 			liquibase.setTestRollbackOnUpdate(properties.isTestRollbackOnUpdate());
 			liquibase.setTag(properties.getTag());
+			if (properties.getShowSummary() != null) {
+				liquibase.setShowSummary(UpdateSummaryEnum.valueOf(properties.getShowSummary().name()));
+			}
+			if (properties.getShowSummaryOutput() != null) {
+				liquibase
+					.setShowSummaryOutput(UpdateSummaryOutputEnum.valueOf(properties.getShowSummaryOutput().name()));
+			}
 			return liquibase;
 		}
 
 		private SpringLiquibase createSpringLiquibase(DataSource liquibaseDataSource, DataSource dataSource,
-				JdbcConnectionDetails connectionDetails) {
+				LiquibaseConnectionDetails connectionDetails) {
 			DataSource migrationDataSource = getMigrationDataSource(liquibaseDataSource, dataSource, connectionDetails);
 			SpringLiquibase liquibase = (migrationDataSource == liquibaseDataSource
 					|| migrationDataSource == dataSource) ? new SpringLiquibase()
@@ -121,7 +136,7 @@ public class LiquibaseAutoConfiguration {
 		}
 
 		private DataSource getMigrationDataSource(DataSource liquibaseDataSource, DataSource dataSource,
-				JdbcConnectionDetails connectionDetails) {
+				LiquibaseConnectionDetails connectionDetails) {
 			if (liquibaseDataSource != null) {
 				return liquibaseDataSource;
 			}
@@ -143,7 +158,8 @@ public class LiquibaseAutoConfiguration {
 			return dataSource;
 		}
 
-		private void applyConnectionDetails(JdbcConnectionDetails connectionDetails, DataSourceBuilder<?> builder) {
+		private void applyConnectionDetails(LiquibaseConnectionDetails connectionDetails,
+				DataSourceBuilder<?> builder) {
 			builder.username(connectionDetails.getUsername());
 			builder.password(connectionDetails.getPassword());
 			String driverClassName = connectionDetails.getDriverClassName();
@@ -181,19 +197,19 @@ public class LiquibaseAutoConfiguration {
 
 		@Override
 		public void registerHints(RuntimeHints hints, ClassLoader classLoader) {
-			hints.resources().registerPattern("db/changelog/db.changelog-master.yaml");
+			hints.resources().registerPattern("db/changelog/*");
 		}
 
 	}
 
 	/**
-	 * Adapts {@link LiquibaseProperties} to {@link JdbcConnectionDetails}.
+	 * Adapts {@link LiquibaseProperties} to {@link LiquibaseConnectionDetails}.
 	 */
-	private static final class LiquibasePropertiesJdbcConnectionDetails implements JdbcConnectionDetails {
+	static final class PropertiesLiquibaseConnectionDetails implements LiquibaseConnectionDetails {
 
 		private final LiquibaseProperties properties;
 
-		private LiquibasePropertiesJdbcConnectionDetails(LiquibaseProperties properties) {
+		PropertiesLiquibaseConnectionDetails(LiquibaseProperties properties) {
 			this.properties = properties;
 		}
 
@@ -214,7 +230,8 @@ public class LiquibaseAutoConfiguration {
 
 		@Override
 		public String getDriverClassName() {
-			return this.properties.getDriverClassName();
+			String driverClassName = this.properties.getDriverClassName();
+			return (driverClassName != null) ? driverClassName : LiquibaseConnectionDetails.super.getDriverClassName();
 		}
 
 	}

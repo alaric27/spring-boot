@@ -33,7 +33,6 @@ import org.springframework.boot.actuate.autoconfigure.info.InfoEndpointAutoConfi
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.autoconfigure.security.oauth2.resource.reactive.ReactiveOAuth2ResourceServerAutoConfiguration;
 import org.springframework.boot.autoconfigure.security.reactive.ReactiveSecurityAutoConfiguration;
-import org.springframework.boot.autoconfigure.security.reactive.ReactiveUserDetailsServiceAutoConfiguration;
 import org.springframework.boot.autoconfigure.web.reactive.WebFluxAutoConfiguration;
 import org.springframework.boot.test.context.assertj.AssertableReactiveWebApplicationContext;
 import org.springframework.boot.test.context.runner.ReactiveWebApplicationContextRunner;
@@ -47,8 +46,9 @@ import org.springframework.http.server.reactive.ServerHttpResponse;
 import org.springframework.mock.http.server.reactive.MockServerHttpRequest;
 import org.springframework.mock.http.server.reactive.MockServerHttpResponse;
 import org.springframework.security.authentication.ReactiveAuthenticationManager;
-import org.springframework.security.config.Customizer;
 import org.springframework.security.config.web.server.ServerHttpSecurity;
+import org.springframework.security.core.userdetails.MapReactiveUserDetailsService;
+import org.springframework.security.core.userdetails.User;
 import org.springframework.security.web.server.SecurityWebFilterChain;
 import org.springframework.security.web.server.WebFilterChainProxy;
 import org.springframework.web.server.ServerWebExchange;
@@ -57,6 +57,7 @@ import org.springframework.web.server.adapter.HttpWebHandlerAdapter;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
+import static org.springframework.security.config.Customizer.withDefaults;
 
 /**
  * Tests for {@link ReactiveManagementWebSecurityAutoConfiguration}.
@@ -70,8 +71,8 @@ class ReactiveManagementWebSecurityAutoConfigurationTests {
 				HealthEndpointAutoConfiguration.class, InfoEndpointAutoConfiguration.class,
 				WebFluxAutoConfiguration.class, EnvironmentEndpointAutoConfiguration.class,
 				EndpointAutoConfiguration.class, WebEndpointAutoConfiguration.class,
-				ReactiveSecurityAutoConfiguration.class, ReactiveUserDetailsServiceAutoConfiguration.class,
-				ReactiveManagementWebSecurityAutoConfiguration.class));
+				ReactiveSecurityAutoConfiguration.class, ReactiveManagementWebSecurityAutoConfiguration.class))
+		.withUserConfiguration(UserDetailsServiceConfiguration.class);
 
 	@Test
 	void permitAllForHealth() {
@@ -156,6 +157,17 @@ class ReactiveManagementWebSecurityAutoConfigurationTests {
 	}
 
 	@Configuration(proxyBeanMethods = false)
+	static class UserDetailsServiceConfiguration {
+
+		@Bean
+		MapReactiveUserDetailsService userDetailsService() {
+			return new MapReactiveUserDetailsService(
+					User.withUsername("alice").password("secret").roles("admin").build());
+		}
+
+	}
+
+	@Configuration(proxyBeanMethods = false)
 	static class CustomSecurityConfiguration {
 
 		@Bean
@@ -164,7 +176,7 @@ class ReactiveManagementWebSecurityAutoConfigurationTests {
 				exchanges.pathMatchers("/foo").permitAll();
 				exchanges.anyExchange().authenticated();
 			});
-			http.formLogin(Customizer.withDefaults());
+			http.formLogin(withDefaults());
 			return http.build();
 		}
 
@@ -192,7 +204,7 @@ class ReactiveManagementWebSecurityAutoConfigurationTests {
 
 		private List<SecurityWebFilterChain> getFilterChains(ServerHttpSecurity http) {
 			http.authorizeExchange((exchanges) -> exchanges.anyExchange().authenticated());
-			http.formLogin(Customizer.withDefaults());
+			http.formLogin(withDefaults());
 			return Collections.singletonList(http.build());
 		}
 

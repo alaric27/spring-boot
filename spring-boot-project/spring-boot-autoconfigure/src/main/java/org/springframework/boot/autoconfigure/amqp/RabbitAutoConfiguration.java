@@ -38,6 +38,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnSingleCandidate;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.ssl.SslBundles;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
@@ -69,6 +70,7 @@ import org.springframework.core.io.ResourceLoader;
  * @author Chris Bono
  * @author Moritz Halbritter
  * @author Andy Wilkinson
+ * @author Scott Frederick
  * @since 1.0.0
  */
 @AutoConfiguration
@@ -82,22 +84,24 @@ public class RabbitAutoConfiguration {
 
 		private final RabbitProperties properties;
 
-		private final RabbitConnectionDetails connectionDetails;
-
-		protected RabbitConnectionFactoryCreator(RabbitProperties properties,
-				ObjectProvider<RabbitConnectionDetails> connectionDetails) {
+		protected RabbitConnectionFactoryCreator(RabbitProperties properties) {
 			this.properties = properties;
-			this.connectionDetails = connectionDetails
-				.getIfAvailable(() -> new PropertiesRabbitConnectionDetails(properties));
+		}
+
+		@Bean
+		@ConditionalOnMissingBean(RabbitConnectionDetails.class)
+		RabbitConnectionDetails rabbitConnectionDetails() {
+			return new PropertiesRabbitConnectionDetails(this.properties);
 		}
 
 		@Bean
 		@ConditionalOnMissingBean
 		RabbitConnectionFactoryBeanConfigurer rabbitConnectionFactoryBeanConfigurer(ResourceLoader resourceLoader,
-				ObjectProvider<CredentialsProvider> credentialsProvider,
-				ObjectProvider<CredentialsRefreshService> credentialsRefreshService) {
+				RabbitConnectionDetails connectionDetails, ObjectProvider<CredentialsProvider> credentialsProvider,
+				ObjectProvider<CredentialsRefreshService> credentialsRefreshService,
+				ObjectProvider<SslBundles> sslBundles) {
 			RabbitConnectionFactoryBeanConfigurer configurer = new RabbitConnectionFactoryBeanConfigurer(resourceLoader,
-					this.properties, this.connectionDetails);
+					this.properties, connectionDetails, sslBundles.getIfAvailable());
 			configurer.setCredentialsProvider(credentialsProvider.getIfUnique());
 			configurer.setCredentialsRefreshService(credentialsRefreshService.getIfUnique());
 			return configurer;
@@ -105,10 +109,10 @@ public class RabbitAutoConfiguration {
 
 		@Bean
 		@ConditionalOnMissingBean
-		CachingConnectionFactoryConfigurer rabbitConnectionFactoryConfigurer(
+		CachingConnectionFactoryConfigurer rabbitConnectionFactoryConfigurer(RabbitConnectionDetails connectionDetails,
 				ObjectProvider<ConnectionNameStrategy> connectionNameStrategy) {
 			CachingConnectionFactoryConfigurer configurer = new CachingConnectionFactoryConfigurer(this.properties,
-					this.connectionDetails);
+					connectionDetails);
 			configurer.setConnectionNameStrategy(connectionNameStrategy.getIfUnique());
 			return configurer;
 		}
@@ -120,7 +124,7 @@ public class RabbitAutoConfiguration {
 				CachingConnectionFactoryConfigurer rabbitCachingConnectionFactoryConfigurer,
 				ObjectProvider<ConnectionFactoryCustomizer> connectionFactoryCustomizers) throws Exception {
 
-			RabbitConnectionFactoryBean connectionFactoryBean = new RabbitConnectionFactoryBean();
+			RabbitConnectionFactoryBean connectionFactoryBean = new SslBundleRabbitConnectionFactoryBean();
 			rabbitConnectionFactoryBeanConfigurer.configure(connectionFactoryBean);
 			connectionFactoryBean.afterPropertiesSet();
 			com.rabbitmq.client.ConnectionFactory connectionFactory = connectionFactoryBean.getObject();

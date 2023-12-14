@@ -48,6 +48,7 @@ import org.springframework.boot.loader.tools.EntryWriter;
 import org.springframework.boot.loader.tools.ImagePackager;
 import org.springframework.boot.loader.tools.LayoutFactory;
 import org.springframework.boot.loader.tools.Libraries;
+import org.springframework.boot.loader.tools.LoaderImplementation;
 import org.springframework.util.StringUtils;
 
 /**
@@ -156,6 +157,22 @@ public abstract class BuildImageMojo extends AbstractPackagerMojo {
 	String network;
 
 	/**
+	 * Alias for {@link Image#createdDate} to support configuration through command-line
+	 * property.
+	 * @since 3.1.0
+	 */
+	@Parameter(property = "spring-boot.build-image.createdDate", readonly = true)
+	String createdDate;
+
+	/**
+	 * Alias for {@link Image#applicationDirectory} to support configuration through
+	 * command-line property.
+	 * @since 3.1.0
+	 */
+	@Parameter(property = "spring-boot.build-image.applicationDirectory", readonly = true)
+	String applicationDirectory;
+
+	/**
 	 * Docker configuration options.
 	 * @since 2.4.0
 	 */
@@ -170,6 +187,13 @@ public abstract class BuildImageMojo extends AbstractPackagerMojo {
 	 */
 	@Parameter
 	private LayoutType layout;
+
+	/**
+	 * The loader implementation that should be used.
+	 * @since 3.2.0
+	 */
+	@Parameter
+	private LoaderImplementation loaderImplementation;
 
 	/**
 	 * The layout factory that will be used to create the executable archive if no
@@ -188,6 +212,11 @@ public abstract class BuildImageMojo extends AbstractPackagerMojo {
 	@Override
 	protected LayoutType getLayout() {
 		return this.layout;
+	}
+
+	@Override
+	protected LoaderImplementation getLoaderImplementation() {
+		return this.loaderImplementation;
 	}
 
 	/**
@@ -252,6 +281,12 @@ public abstract class BuildImageMojo extends AbstractPackagerMojo {
 		}
 		if (image.network == null && this.network != null) {
 			image.setNetwork(this.network);
+		}
+		if (image.createdDate == null && this.createdDate != null) {
+			image.setCreatedDate(this.createdDate);
+		}
+		if (image.applicationDirectory == null && this.applicationDirectory != null) {
+			image.setApplicationDirectory(this.applicationDirectory);
 		}
 		return customize(image.getBuildRequest(this.project.getArtifact(), content));
 	}

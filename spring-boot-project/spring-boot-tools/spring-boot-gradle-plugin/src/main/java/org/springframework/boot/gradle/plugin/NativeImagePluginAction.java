@@ -24,11 +24,11 @@ import org.graalvm.buildtools.gradle.NativeImagePlugin;
 import org.graalvm.buildtools.gradle.dsl.GraalVMExtension;
 import org.graalvm.buildtools.gradle.dsl.GraalVMReachabilityMetadataRepositoryExtension;
 import org.gradle.api.Action;
-import org.gradle.api.GradleException;
 import org.gradle.api.Plugin;
 import org.gradle.api.Project;
 import org.gradle.api.artifacts.Configuration;
 import org.gradle.api.file.FileCollection;
+import org.gradle.api.java.archives.Manifest;
 import org.gradle.api.plugins.ExtensionAware;
 import org.gradle.api.plugins.JavaPlugin;
 import org.gradle.api.plugins.JavaPluginExtension;
@@ -47,8 +47,7 @@ import org.springframework.boot.gradle.tasks.bundling.BootJar;
 class NativeImagePluginAction implements PluginApplicationAction {
 
 	@Override
-	public Class<? extends Plugin<? extends Project>> getPluginClass()
-			throws ClassNotFoundException, NoClassDefFoundError {
+	public Class<? extends Plugin<? extends Project>> getPluginClass() {
 		return NativeImagePlugin.class;
 	}
 
@@ -60,10 +59,11 @@ class NativeImagePluginAction implements PluginApplicationAction {
 			SourceSetContainer sourceSets = javaPluginExtension.getSourceSets();
 			GraalVMExtension graalVmExtension = configureGraalVmExtension(project);
 			configureMainNativeBinaryClasspath(project, sourceSets, graalVmExtension);
-			configureTestNativeBinaryClasspath(project, sourceSets, graalVmExtension);
+			configureTestNativeBinaryClasspath(sourceSets, graalVmExtension);
 			configureGraalVmReachabilityExtension(graalVmExtension);
 			copyReachabilityMetadataToBootJar(project);
 			configureBootBuildImageToProduceANativeImage(project);
+			configureJarManifestNativeAttribute(project);
 		});
 	}
 
@@ -83,11 +83,11 @@ class NativeImagePluginAction implements PluginApplicationAction {
 	}
 
 	private boolean isNotDevelopmentOnly(Configuration configuration) {
-		return !SpringBootPlugin.DEVELOPMENT_ONLY_CONFIGURATION_NAME.equals(configuration.getName());
+		return !SpringBootPlugin.DEVELOPMENT_ONLY_CONFIGURATION_NAME.equals(configuration.getName())
+				&& !SpringBootPlugin.TEST_AND_DEVELOPMENT_ONLY_CONFIGURATION_NAME.equals(configuration.getName());
 	}
 
-	private void configureTestNativeBinaryClasspath(Project project, SourceSetContainer sourceSets,
-			GraalVMExtension graalVmExtension) {
+	private void configureTestNativeBinaryClasspath(SourceSetContainer sourceSets, GraalVMExtension graalVmExtension) {
 		FileCollection runtimeClasspath = sourceSets.getByName(SpringBootAotPlugin.AOT_TEST_SOURCE_SET_NAME)
 			.getRuntimeClasspath();
 		graalVmExtension.getBinaries().getByName(NativeImagePlugin.NATIVE_TEST_EXTENSION).classpath(runtimeClasspath);
@@ -96,15 +96,6 @@ class NativeImagePluginAction implements PluginApplicationAction {
 	private GraalVMExtension configureGraalVmExtension(Project project) {
 		GraalVMExtension extension = project.getExtensions().getByType(GraalVMExtension.class);
 		extension.getToolchainDetection().set(false);
-		extension.getBinaries().configureEach((options) -> {
-			try {
-				options.getRequiredVersion().convention("22.3");
-			}
-			catch (NoSuchMethodError ex) {
-				throw new GradleException("Incompatible version of org.graalvm.buildtools.native plugin. "
-						+ "Please upgrade to 0.9.17 or later.");
-			}
-		});
 		return extension;
 	}
 
@@ -124,9 +115,23 @@ class NativeImagePluginAction implements PluginApplicationAction {
 		project.getTasks()
 			.named(SpringBootPlugin.BOOT_BUILD_IMAGE_TASK_NAME, BootBuildImage.class)
 			.configure((bootBuildImage) -> {
-				bootBuildImage.getBuilder().convention("paketobuildpacks/builder:tiny");
+				bootBuildImage.getBuilder().convention("paketobuildpacks/builder-jammy-tiny:latest");
 				bootBuildImage.getEnvironment().put("BP_NATIVE_IMAGE", "true");
 			});
+	}
+
+	private void configureJarManifestNativeAttribute(Project project) {
+		project.getTasks()
+			.named(SpringBootPlugin.BOOT_JAR_TASK_NAME, BootJar.class)
+			.configure(this::addNativeProcessedAttribute);
+	}
+
+	private void addNativeProcessedAttribute(BootJar bootJar) {
+		bootJar.manifest(this::addNativeProcessedAttribute);
+	}
+
+	private void addNativeProcessedAttribute(Manifest manifest) {
+		manifest.getAttributes().put("Spring-Boot-Native-Processed", true);
 	}
 
 }

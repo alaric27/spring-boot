@@ -24,7 +24,6 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -37,6 +36,7 @@ import org.springframework.beans.factory.HierarchicalBeanFactory;
 import org.springframework.beans.factory.ListableBeanFactory;
 import org.springframework.beans.factory.config.BeanDefinition;
 import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
+import org.springframework.beans.factory.config.SingletonBeanRegistry;
 import org.springframework.boot.autoconfigure.AutoConfigurationMetadata;
 import org.springframework.boot.autoconfigure.condition.ConditionMessage.Style;
 import org.springframework.context.annotation.Bean;
@@ -182,13 +182,8 @@ class OnBeanCondition extends FilteringSpringBootCondition implements Configurat
 		for (String type : spec.getTypes()) {
 			Collection<String> typeMatches = getBeanNamesForType(classLoader, considerHierarchy, beanFactory, type,
 					parameterizedContainers);
-			Iterator<String> iterator = typeMatches.iterator();
-			while (iterator.hasNext()) {
-				String match = iterator.next();
-				if (beansIgnoredByType.contains(match) || ScopedProxyUtils.isScopedTarget(match)) {
-					iterator.remove();
-				}
-			}
+			typeMatches
+				.removeIf((match) -> beansIgnoredByType.contains(match) || ScopedProxyUtils.isScopedTarget(match));
 			if (typeMatches.isEmpty()) {
 				result.recordUnmatchedType(type);
 			}
@@ -285,7 +280,7 @@ class OnBeanCondition extends FilteringSpringBootCondition implements Configurat
 
 	private Set<String> collectBeanNamesForAnnotation(ListableBeanFactory beanFactory,
 			Class<? extends Annotation> annotationType, boolean considerHierarchy, Set<String> result) {
-		result = addAll(result, beanFactory.getBeanNamesForAnnotation(annotationType));
+		result = addAll(result, getBeanNamesForAnnotation(beanFactory, annotationType));
 		if (considerHierarchy) {
 			BeanFactory parent = ((HierarchicalBeanFactory) beanFactory).getParentBeanFactory();
 			if (parent instanceof ListableBeanFactory listableBeanFactory) {
@@ -293,6 +288,30 @@ class OnBeanCondition extends FilteringSpringBootCondition implements Configurat
 			}
 		}
 		return result;
+	}
+
+	private String[] getBeanNamesForAnnotation(ListableBeanFactory beanFactory,
+			Class<? extends Annotation> annotationType) {
+		Set<String> foundBeanNames = new LinkedHashSet<>();
+		for (String beanName : beanFactory.getBeanDefinitionNames()) {
+			if (beanFactory instanceof ConfigurableListableBeanFactory configurableListableBeanFactory) {
+				BeanDefinition beanDefinition = configurableListableBeanFactory.getBeanDefinition(beanName);
+				if (beanDefinition != null && beanDefinition.isAbstract()) {
+					continue;
+				}
+			}
+			if (beanFactory.findAnnotationOnBean(beanName, annotationType, false) != null) {
+				foundBeanNames.add(beanName);
+			}
+		}
+		if (beanFactory instanceof SingletonBeanRegistry singletonBeanRegistry) {
+			for (String beanName : singletonBeanRegistry.getSingletonNames()) {
+				if (beanFactory.findAnnotationOnBean(beanName, annotationType) != null) {
+					foundBeanNames.add(beanName);
+				}
+			}
+		}
+		return foundBeanNames.toArray(String[]::new);
 	}
 
 	private boolean containsBean(ConfigurableListableBeanFactory beanFactory, String beanName,

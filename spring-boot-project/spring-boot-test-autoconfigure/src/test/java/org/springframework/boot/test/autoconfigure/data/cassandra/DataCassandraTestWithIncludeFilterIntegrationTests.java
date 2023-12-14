@@ -25,8 +25,8 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.cassandra.CassandraServiceConnection;
 import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.boot.testsupport.testcontainers.CassandraContainer;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ComponentScan.Filter;
@@ -51,7 +51,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class DataCassandraTestWithIncludeFilterIntegrationTests {
 
 	@Container
-	@CassandraServiceConnection
+	@ServiceConnection
 	static final CassandraContainer cassandra = new CassandraContainer();
 
 	@Autowired
@@ -77,7 +77,7 @@ class DataCassandraTestWithIncludeFilterIntegrationTests {
 		CqlSession cqlSession(CqlSessionBuilder cqlSessionBuilder) {
 			try (CqlSession session = cqlSessionBuilder.build()) {
 				session.execute("CREATE KEYSPACE IF NOT EXISTS boot_test"
-						+ "  WITH REPLICATION = { 'class' : 'SimpleStrategy', 'replication_factor' : 1 };");
+						+ " WITH REPLICATION = { 'class' : 'SimpleStrategy', 'replication_factor' : 1 };");
 			}
 			return cqlSessionBuilder.withKeyspace("boot_test").build();
 		}

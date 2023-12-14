@@ -35,12 +35,13 @@ To use the vintage engine, add a dependency on `junit-vintage-engine`, as shown 
 The `spring-boot-starter-test` "`Starter`" (in the `test` `scope`) contains the following provided libraries:
 
 * https://junit.org/junit5/[JUnit 5]: The de-facto standard for unit testing Java applications.
-* {spring-framework-docs}/testing.html#integration-testing[Spring Test] & Spring Boot Test: Utilities and integration test support for Spring Boot applications.
+* {spring-framework-docs}/testing/integration.html[Spring Test] & Spring Boot Test: Utilities and integration test support for Spring Boot applications.
 * https://assertj.github.io/doc/[AssertJ]: A fluent assertion library.
 * https://github.com/hamcrest/JavaHamcrest[Hamcrest]: A library of matcher objects (also known as constraints or predicates).
 * https://site.mockito.org/[Mockito]: A Java mocking framework.
 * https://github.com/skyscreamer/JSONassert[JSONassert]: An assertion library for JSON.
 * https://github.com/jayway/JsonPath[JsonPath]: XPath for JSON.
+* https://https://github.com/awaitility/awaitility[Awaitility]: A library for testing asynchronous systems.
 
 We generally find these common libraries to be useful when writing tests.
 If these libraries do not suit your needs, you can add additional test dependencies of your own.
@@ -59,7 +60,7 @@ It is useful to be able to perform integration testing without requiring deploym
 The Spring Framework includes a dedicated test module for such integration testing.
 You can declare a dependency directly to `org.springframework:spring-test` or use the `spring-boot-starter-test` "`Starter`" to pull it in transitively.
 
-If you have not used the `spring-test` module before, you should start by reading the {spring-framework-docs}/testing.html#testing[relevant section] of the Spring Framework reference documentation.
+If you have not used the `spring-test` module before, you should start by reading the {spring-framework-docs}/testing.html[relevant section] of the Spring Framework reference documentation.
 
 
 
@@ -172,13 +173,16 @@ include::code:always/MyApplicationTests[]
 If your application uses component scanning (for example, if you use `@SpringBootApplication` or `@ComponentScan`), you may find top-level configuration classes that you created only for specific tests accidentally get picked up everywhere.
 
 As we <<features#features.testing.spring-boot-applications.detecting-configuration,have seen earlier>>, `@TestConfiguration` can be used on an inner class of a test to customize the primary configuration.
-When placed on a top-level class, `@TestConfiguration` indicates that classes in `src/test/java` should not be picked up by scanning.
-You can then import that class explicitly where it is required, as shown in the following example:
+`@TestConfiguration` can also be used on a top-level class. Doing so indicates that the class should not be picked up by scanning.
+You can then import the class explicitly where it is required, as shown in the following example:
 
 include::code:MyTests[]
 
 NOTE: If you directly use `@ComponentScan` (that is, not through `@SpringBootApplication`) you need to register the `TypeExcludeFilter` with it.
 See {spring-boot-module-api}/context/TypeExcludeFilter.html[the Javadoc] for details.
+
+NOTE: An imported `@TestConfiguration` is processed earlier than an inner-class `@TestConfiguration` and an imported `@TestConfiguration` will be processed before any configuration found through component scanning.
+Generally speaking, this difference in ordering has no noticeable effect but it is something to be aware of if you're relying on bean overriding.
 
 
 
@@ -195,13 +199,13 @@ include::code:MyApplicationArgumentTests[]
 ==== Testing With a Mock Environment
 By default, `@SpringBootTest` does not start the server but instead sets up a mock environment for testing web endpoints.
 
-With Spring MVC, we can query our web endpoints using {spring-framework-docs}/testing.html#spring-mvc-test-framework[`MockMvc`] or `WebTestClient`, as shown in the following example:
+With Spring MVC, we can query our web endpoints using {spring-framework-docs}/testing/spring-mvc-test-framework.html[`MockMvc`] or `WebTestClient`, as shown in the following example:
 
 include::code:MyMockMvcTests[]
 
 TIP: If you want to focus only on the web layer and not start a complete `ApplicationContext`, consider <<features#features.testing.spring-boot-applications.spring-mvc-tests,using `@WebMvcTest` instead>>.
 
-With Spring WebFlux endpoints, you can use {spring-framework-docs}/testing.html#webtestclient-tests[`WebTestClient`] as shown in the following example:
+With Spring WebFlux endpoints, you can use {spring-framework-docs}/testing/webtestclient.html[`WebTestClient`] as shown in the following example:
 
 include::code:MyMockWebTestClientTests[]
 
@@ -223,11 +227,11 @@ If you need to start a full running server, we recommend that you use random por
 If you use `@SpringBootTest(webEnvironment=WebEnvironment.RANDOM_PORT)`, an available port is picked at random each time your test runs.
 
 The `@LocalServerPort` annotation can be used to <<howto#howto.webserver.discover-port,inject the actual port used>> into your test.
-For convenience, tests that need to make REST calls to the started server can additionally `@Autowire` a {spring-framework-docs}/testing.html#webtestclient-tests[`WebTestClient`], which resolves relative links to the running server and comes with a dedicated API for verifying responses, as shown in the following example:
+For convenience, tests that need to make REST calls to the started server can additionally `@Autowire` a {spring-framework-docs}/testing/webtestclient.html[`WebTestClient`], which resolves relative links to the running server and comes with a dedicated API for verifying responses, as shown in the following example:
 
 include::code:MyRandomPortWebTestClientTests[]
 
-TIP: `WebTestClient` can be used against both live servers and <<features#features.testing.spring-boot-applications.with-mock-environment, mock environments>>.
+TIP: `WebTestClient` can also used with a <<features#features.testing.spring-boot-applications.with-mock-environment, mock environment>>, removing the need for a running server, by annotating your test class with `@AutoConfigureWebTestClient`.
 
 This setup requires `spring-webflux` on the classpath.
 If you can not or will not add webflux, Spring Boot also provides a `TestRestTemplate` facility:
@@ -250,17 +254,36 @@ If such test needs access to an `MBeanServer`, consider marking it dirty as well
 
 include::code:MyJmxTests[]
 
+
+[[features.testing.spring-boot-applications.observations]]
+==== Using Observations
+If you annotate <<features#features.testing.spring-boot-applications.autoconfigured-tests, a sliced test>> with `@AutoConfigureObservability`, it auto-configures an `ObservationRegistry`.
+
+
+
 [[features.testing.spring-boot-applications.metrics]]
 ==== Using Metrics
 Regardless of your classpath, meter registries, except the in-memory backed, are not auto-configured when using `@SpringBootTest`.
 
 If you need to export metrics to a different backend as part of an integration test, annotate it with `@AutoConfigureObservability`.
 
+If you annotate <<features#features.testing.spring-boot-applications.autoconfigured-tests, a sliced test>> with `@AutoConfigureObservability`, it auto-configures an in-memory `MeterRegistry`.
+Data exporting in sliced tests is not supported with the `@AutoConfigureObservability` annotation.
+
+
+
 [[features.testing.spring-boot-applications.tracing]]
 ==== Using Tracing
-Regardless of your classpath, tracing is not auto-configured when using `@SpringBootTest`.
+Regardless of your classpath, tracing components which are reporting data are not auto-configured when using `@SpringBootTest`.
 
-If you need tracing as part of an integration test, annotate it with `@AutoConfigureObservability`.
+If you need those components as part of an integration test, annotate the test with `@AutoConfigureObservability`.
+
+If you have created your own reporting components (e.g. a custom `SpanExporter` or `SpanHandler`) and you don't want them to be active in tests, you can use the `@ConditionalOnEnabledTracing` annotation to disable them.
+
+If you annotate <<features#features.testing.spring-boot-applications.autoconfigured-tests, a sliced test>> with `@AutoConfigureObservability`, it auto-configures a no-op `Tracer`.
+Data exporting in sliced tests is not supported with the `@AutoConfigureObservability` annotation.
+
+
 
 [[features.testing.spring-boot-applications.mocking-beans]]
 ==== Mocking and Spying Beans
@@ -280,7 +303,6 @@ If your test uses one of Spring Boot's test annotations (such as `@SpringBootTes
 To use this feature with a different arrangement, listeners must be explicitly added, as shown in the following example:
 
 include::code:listener/MyTests[]
-
 ====
 
 The following example replaces an existing `RemoteService` bean with a mock implementation:
@@ -293,11 +315,6 @@ We recommend using a `@Bean` method to create and configure the mock in this sit
 
 Additionally, you can use `@SpyBean` to wrap any existing bean with a Mockito `spy`.
 See the {spring-boot-test-module-api}/mock/mockito/SpyBean.html[Javadoc] for full details.
-
-NOTE: CGLib proxies, such as those created for scoped beans, declare the proxied methods as `final`.
-This stops Mockito from functioning correctly as it cannot mock or spy on `final` methods in its default configuration.
-If you want to mock or spy on such a bean, configure Mockito to use its inline mock maker by adding `org.mockito:mockito-inline` to your application's test dependencies.
-This allows Mockito to mock and spy on `final` methods.
 
 NOTE: While Spring's test framework caches application contexts between tests and reuses a context for tests sharing the same configuration, the use of `@MockBean` or `@SpyBean` influences the cache key, which will most likely increase the number of contexts.
 
@@ -416,7 +433,7 @@ TIP: If you need to register extra components, such as Jackson `Module`, you can
 
 Often, `@WebFluxTest` is limited to a single controller and used in combination with the `@MockBean` annotation to provide mock implementations for required collaborators.
 
-`@WebFluxTest` also auto-configures {spring-framework-docs}/testing.html#webtestclient[`WebTestClient`], which offers a powerful way to quickly test WebFlux controllers without needing to start a full HTTP server.
+`@WebFluxTest` also auto-configures {spring-framework-docs}/testing/webtestclient.html[`WebTestClient`], which offers a powerful way to quickly test WebFlux controllers without needing to start a full HTTP server.
 
 TIP: You can also auto-configure `WebTestClient` in a non-`@WebFluxTest` (such as `@SpringBootTest`) by annotating it with `@AutoConfigureWebTestClient`.
 The following example shows a class that uses both `@WebFluxTest` and a `WebTestClient`:
@@ -474,7 +491,7 @@ There are `GraphQlTester` variants and Spring Boot will auto-configure them depe
 * the `ExecutionGraphQlServiceTester` performs tests on the server side, without a client nor a transport
 * the `HttpGraphQlTester` performs tests with a client that connects to a server, with or without a live server
 
-Spring Boot helps you to test your {spring-graphql-docs}#controllers[Spring GraphQL Controllers] with the `@GraphQlTest` annotation.
+Spring Boot helps you to test your {spring-graphql-docs}/#controllers[Spring GraphQL Controllers] with the `@GraphQlTest` annotation.
 `@GraphQlTest` auto-configures the Spring GraphQL infrastructure, without any transport nor server being involved.
 This limits scanned beans to `@Controller`, `RuntimeWiringConfigurer`, `JsonComponent`, `Converter`, `GenericConverter`, `DataFetcherExceptionResolver`, `Instrumentation` and `GraphQlSourceBuilderCustomizer`.
 Regular `@Component` and `@ConfigurationProperties` beans are not scanned when the `@GraphQlTest` annotation is used.
@@ -491,6 +508,7 @@ When using a random or defined port, a live server is configured and an `HttpGra
 When a MOCK environment is configured, you can also request an `HttpGraphQlTester` bean by annotating your test class with `@AutoConfigureHttpGraphQlTester`:
 
 include::code:GraphQlIntegrationTests[]
+
 
 
 [[features.testing.spring-boot-applications.autoconfigured-spring-data-cassandra]]
@@ -555,7 +573,7 @@ Regular `@Component` and `@ConfigurationProperties` beans are not scanned when t
 TIP: A list of the auto-configuration settings that are enabled by `@DataJpaTest` can be <<test-auto-configuration#appendix.test-auto-configuration,found in the appendix>>.
 
 By default, data JPA tests are transactional and roll back at the end of each test.
-See the {spring-framework-docs}/testing.html#testcontext-tx-enabling-transactions[relevant section] in the Spring Framework Reference Documentation for more details.
+See the {spring-framework-docs}/testing/testcontext-framework/tx.html#testcontext-tx-enabling-transactions[relevant section] in the Spring Framework Reference Documentation for more details.
 If that is not what you want, you can disable transaction management for a test or for the whole class as follows:
 
 include::code:MyNonTransactionalTests[]
@@ -587,12 +605,12 @@ Regular `@Component` and `@ConfigurationProperties` beans are not scanned when t
 TIP: A list of the auto-configurations that are enabled by `@JdbcTest` can be <<test-auto-configuration#appendix.test-auto-configuration,found in the appendix>>.
 
 By default, JDBC tests are transactional and roll back at the end of each test.
-See the {spring-framework-docs}/testing.html#testcontext-tx-enabling-transactions[relevant section] in the Spring Framework Reference Documentation for more details.
+See the {spring-framework-docs}/testing/testcontext-framework/tx.html#testcontext-tx-enabling-transactions[relevant section] in the Spring Framework Reference Documentation for more details.
 If that is not what you want, you can disable transaction management for a test or for the whole class, as follows:
 
 include::code:MyTransactionalTests[]
 
-If you prefer your test to run against a real database, you can use the `@AutoConfigureTestDatabase` annotation in the same way as for `DataJpaTest`.
+If you prefer your test to run against a real database, you can use the `@AutoConfigureTestDatabase` annotation in the same way as for `@DataJpaTest`.
 (See "<<features#features.testing.spring-boot-applications.autoconfigured-spring-data-jpa>>".)
 
 
@@ -607,10 +625,26 @@ Only `AbstractJdbcConfiguration` subclasses are scanned when the `@DataJdbcTest`
 TIP: A list of the auto-configurations that are enabled by `@DataJdbcTest` can be <<test-auto-configuration#appendix.test-auto-configuration,found in the appendix>>.
 
 By default, Data JDBC tests are transactional and roll back at the end of each test.
-See the {spring-framework-docs}/testing.html#testcontext-tx-enabling-transactions[relevant section] in the Spring Framework Reference Documentation for more details.
+See the {spring-framework-docs}/testing/testcontext-framework/tx.html#testcontext-tx-enabling-transactions[relevant section] in the Spring Framework Reference Documentation for more details.
 If that is not what you want, you can disable transaction management for a test or for the whole test class as <<features#features.testing.spring-boot-applications.autoconfigured-jdbc,shown in the JDBC example>>.
 
-If you prefer your test to run against a real database, you can use the `@AutoConfigureTestDatabase` annotation in the same way as for `DataJpaTest`.
+If you prefer your test to run against a real database, you can use the `@AutoConfigureTestDatabase` annotation in the same way as for `@DataJpaTest`.
+(See "<<features#features.testing.spring-boot-applications.autoconfigured-spring-data-jpa>>".)
+
+
+
+[[features.testing.spring-boot-applications.autoconfigured-spring-data-r2dbc]]
+==== Auto-configured Data R2DBC Tests
+`@DataR2dbcTest` is similar to `@DataJdbcTest` but is for tests that use Spring Data R2DBC repositories.
+By default, it configures an in-memory embedded database, an `R2dbcEntityTemplate`, and Spring Data R2DBC repositories.
+Regular `@Component` and `@ConfigurationProperties` beans are not scanned when the `@DataR2dbcTest` annotation is used.
+`@EnableConfigurationProperties` can be used to include `@ConfigurationProperties` beans.
+
+TIP: A list of the auto-configurations that are enabled by `@DataR2dbcTest` can be <<test-auto-configuration#appendix.test-auto-configuration,found in the appendix>>.
+
+By default, Data R2DBC tests are not transactional.
+
+If you prefer your test to run against a real database, you can use the `@AutoConfigureTestDatabase` annotation in the same way as for `@DataJpaTest`.
 (See "<<features#features.testing.spring-boot-applications.autoconfigured-spring-data-jpa>>".)
 
 
@@ -667,7 +701,7 @@ The following example shows a typical setup for using Neo4J tests in Spring Boot
 include::code:propagation/MyDataNeo4jTests[]
 
 By default, Data Neo4j tests are transactional and roll back at the end of each test.
-See the {spring-framework-docs}/testing.html#testcontext-tx-enabling-transactions[relevant section] in the Spring Framework Reference Documentation for more details.
+See the {spring-framework-docs}/testing/testcontext-framework/tx.html#testcontext-tx-enabling-transactions[relevant section] in the Spring Framework Reference Documentation for more details.
 If that is not what you want, you can disable transaction management for a test or for the whole class, as follows:
 
 include::code:nopropagation/MyDataNeo4jTests[]
@@ -717,15 +751,21 @@ include::code:server/MyDataLdapTests[]
 [[features.testing.spring-boot-applications.autoconfigured-rest-client]]
 ==== Auto-configured REST Clients
 You can use the `@RestClientTest` annotation to test REST clients.
-By default, it auto-configures Jackson, GSON, and Jsonb support, configures a `RestTemplateBuilder`, and adds support for `MockRestServiceServer`.
+By default, it auto-configures Jackson, GSON, and Jsonb support, configures a `RestTemplateBuilder` and a `RestClient.Builder`, and adds support for `MockRestServiceServer`.
 Regular `@Component` and `@ConfigurationProperties` beans are not scanned when the `@RestClientTest` annotation is used.
 `@EnableConfigurationProperties` can be used to include `@ConfigurationProperties` beans.
 
 TIP: A list of the auto-configuration settings that are enabled by `@RestClientTest` can be <<test-auto-configuration#appendix.test-auto-configuration,found in the appendix>>.
 
-The specific beans that you want to test should be specified by using the `value` or `components` attribute of `@RestClientTest`, as shown in the following example:
+The specific beans that you want to test should be specified by using the `value` or `components` attribute of `@RestClientTest`.
 
-include::code:MyRestClientTests[]
+When using a `RestTemplateBuilder` in the beans under test and `RestTemplateBuilder.rootUri(String rootUri)` has been called when building the `RestTemplate`, then the root URI should be omitted from the `MockRestServiceServer` expectations as shown in the following example:
+
+include::code:MyRestTemplateServiceTests[]
+
+When using a `RestClient.Builder` in the beans under test, or when using a `RestTemplateBuilder` without calling `rootUri(String rootURI)`, the full URI must be used in the `MockRestServiceServer` expectations as shown in the following example:
+
+include::code:MyRestClientServiceTests[]
 
 
 
@@ -855,15 +895,15 @@ If you <<using#using.structuring-your-code, structure your code>> in a sensible 
 
 It then becomes important not to litter the application's main class with configuration settings that are specific to a particular area of its functionality.
 
-Assume that you are using Spring Batch and you rely on the auto-configuration for it.
+Assume that you are using Spring Data MongoDB, you rely on the auto-configuration for it, and you have enabled auditing.
 You could define your `@SpringBootApplication` as follows:
 
 include::code:MyApplication[]
 
-Because this class is the source configuration for the test, any slice test actually tries to start Spring Batch, which is definitely not what you want to do.
+Because this class is the source configuration for the test, any slice test actually tries to enable Mongo auditing, which is definitely not what you want to do.
 A recommended approach is to move that area-specific configuration to a separate `@Configuration` class at the same level as your application, as shown in the following example:
 
-include::code:MyBatchConfiguration[]
+include::code:MyMongoConfiguration[]
 
 NOTE: Depending on the complexity of your application, you may either have a single `@Configuration` class for your customizations or one class per domain area.
 The latter approach lets you enable it in one of your tests, if necessary, with the `@Import` annotation.
@@ -899,6 +939,132 @@ Spock 2.2 or later can be used to test a Spring Boot application.
 To do so, add a dependency on a `-groovy-4.0` version of Spock's `spock-spring` module to your application's build.
 `spock-spring` integrates Spring's test framework into Spock.
 See https://spockframework.org/spock/docs/2.2-M1/modules.html#_spring_module[the documentation for Spock's Spring module] for further details.
+
+
+
+[[features.testing.testcontainers]]
+=== Testcontainers
+The https://www.testcontainers.org/[Testcontainers] library provides a way to manage services running inside Docker containers.
+It integrates with JUnit, allowing you to write a test class that can start up a container before any of the tests run.
+Testcontainers is especially useful for writing integration tests that talk to a real backend service such as MySQL, MongoDB, Cassandra and others.
+
+Testcontainers can be used in a Spring Boot test as follows:
+
+include::code:vanilla/MyIntegrationTests[]
+
+This will start up a docker container running Neo4j (if Docker is running locally) before any of the tests are run.
+In most cases, you will need to configure the application to connect to the service running in the container.
+
+
+
+[[features.testing.testcontainers.service-connections]]
+==== Service Connections
+A service connection is a connection to any remote service.
+Spring Boot's auto-configuration can consume the details of a service connection and use them to establish a connection to a remote service.
+When doing so, the connection details take precedence over any connection-related configuration properties.
+
+When using Testcontainers, connection details can be automatically created for a service running in a container by annotating the container field in the test class.
+
+include::code:MyIntegrationTests[]
+
+Thanks to `@ServiceConnection`, the above configuration allows Neo4j-related beans in the application to communicate with Neo4j running inside the Testcontainers-managed Docker container.
+This is done by automatically defining a `Neo4jConnectionDetails` bean which is then used by the Neo4j auto-configuration, overriding any connection-related configuration properties.
+
+NOTE: You'll need to add the `spring-boot-testcontainers` module as a test dependency in order to use service connections with Testcontainers.
+
+Service connection annotations are processed by `ContainerConnectionDetailsFactory` classes registered with `spring.factories`.
+A `ContainerConnectionDetailsFactory` can create a `ConnectionDetails` bean based on a specific `Container` subclass, or the Docker image name.
+
+The following service connection factories are provided in the `spring-boot-testcontainers` jar:
+
+|===
+| Connection Details | Matched on
+
+| `ActiveMQConnectionDetails`
+| Containers named "symptoma/activemq"
+
+| `CassandraConnectionDetails`
+| Containers of type `CassandraContainer`
+
+| `CouchbaseConnectionDetails`
+| Containers of type `CouchbaseContainer`
+
+| `ElasticsearchConnectionDetails`
+| Containers of type `ElasticsearchContainer`
+
+| `FlywayConnectionDetails`
+| Containers of type `JdbcDatabaseContainer`
+
+| `JdbcConnectionDetails`
+| Containers of type `JdbcDatabaseContainer`
+
+| `KafkaConnectionDetails`
+| Containers of type `KafkaContainer` or `RedpandaContainer`
+
+| `LiquibaseConnectionDetails`
+| Containers of type `JdbcDatabaseContainer`
+
+| `MongoConnectionDetails`
+| Containers of type `MongoDBContainer`
+
+| `Neo4jConnectionDetails`
+| Containers of type `Neo4jContainer`
+
+| `OtlpMetricsConnectionDetails`
+| Containers named "otel/opentelemetry-collector-contrib"
+
+| `OtlpTracingConnectionDetails`
+| Containers named "otel/opentelemetry-collector-contrib"
+
+| `PulsarConnectionDetails`
+| Containers of type `PulsarContainer`
+
+| `R2dbcConnectionDetails`
+| Containers of type `MariaDBContainer`, `MSSQLServerContainer`, `MySQLContainer`, `OracleContainer`, or `PostgreSQLContainer`
+
+| `RabbitConnectionDetails`
+| Containers of type `RabbitMQContainer`
+
+| `RedisConnectionDetails`
+| Containers named "redis"
+
+| `ZipkinConnectionDetails`
+| Containers named "openzipkin/zipkin"
+|===
+
+[TIP]
+====
+By default all applicable connection details beans will be created for a given `Container`.
+For example, a `PostgreSQLContainer` will create both `JdbcConnectionDetails` and `R2dbcConnectionDetails`.
+
+If you want to create only a subset of the applicable types, you can use the `type` attribute of `@ServiceConnection`.
+====
+
+By default `Container.getDockerImageName()` is used to obtain the name used to find connection details.
+This works as long as Spring Boot is able to get the instance of the `Container`, which is the case when using a `static` field like in the example above.
+
+If you're using a `@Bean` method, Spring Boot won't call the bean method to get the Docker image name, because this would cause eager initialization issues.
+Instead, the return type of the bean method is used to find out which connection detail should be used.
+This works as long as you're using typed containers, e.g. `Neo4jContainer` or `RabbitMQContainer`.
+This stops working if you're using `GenericContainer`, e.g. with Redis, as shown in the following example:
+
+include::code:MyRedisConfiguration[]
+
+Spring Boot can't tell from `GenericContainer` which container image is used, so the `name` attribute from `@ServiceConnection` must be used to provide that hint.
+
+You can also can use the `name` attribute of `@ServiceConnection` to override which connection detail will be used, for example when using custom images.
+If you are using the Docker image `registry.mycompany.com/mirror/myredis`, you'd use `@ServiceConnection(name="redis")` to ensure `RedisConnectionDetails` are created.
+
+
+
+[[features.testing.testcontainers.dynamic-properties]]
+==== Dynamic Properties
+A slightly more verbose but also more flexible alternative to service connections is `@DynamicPropertySource`.
+A static `@DynamicPropertySource` method allows adding dynamic property values to the Spring Environment.
+
+include::code:MyIntegrationTests[]
+
+The above configuration allows Neo4j-related beans in the application to communicate with Neo4j running inside the Testcontainers-managed Docker container.
 
 
 

@@ -28,8 +28,8 @@ import reactor.test.StepVerifier;
 
 import org.springframework.beans.factory.NoSuchBeanDefinitionException;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.neo4j.Neo4jServiceConnection;
 import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.boot.testsupport.testcontainers.DockerImageNames;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
@@ -56,7 +56,7 @@ import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 class DataNeo4jTestReactiveIntegrationTests {
 
 	@Container
-	@Neo4jServiceConnection
+	@ServiceConnection
 	static final Neo4jContainer<?> neo4j = new Neo4jContainer<>(DockerImageNames.neo4j()).withoutAuthentication()
 		.withStartupAttempts(5)
 		.withStartupTimeout(Duration.ofMinutes(10));
@@ -76,8 +76,12 @@ class DataNeo4jTestReactiveIntegrationTests {
 			.flatMap(this.exampleRepository::save)
 			.as(StepVerifier::create)
 			.expectNextCount(1)
-			.verifyComplete();
-		StepVerifier.create(this.neo4jTemplate.count(ExampleGraph.class)).expectNext(1L).verifyComplete();
+			.expectComplete()
+			.verify(Duration.ofSeconds(30));
+		StepVerifier.create(this.neo4jTemplate.count(ExampleGraph.class))
+			.expectNext(1L)
+			.expectComplete()
+			.verify(Duration.ofSeconds(30));
 	}
 
 	@Test

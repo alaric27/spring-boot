@@ -42,6 +42,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * Integration tests loader that supports fat jars.
  *
  * @author Phillip Webb
+ * @author Moritz Halbritter
  */
 @DisabledIfDockerUnavailable
 class LoaderIntegrationTests {
@@ -50,37 +51,66 @@ class LoaderIntegrationTests {
 
 	@ParameterizedTest
 	@MethodSource("javaRuntimes")
-	void readUrlsWithoutWarning(JavaRuntime javaRuntime) {
-		try (GenericContainer<?> container = createContainer(javaRuntime)) {
+	void runJar(JavaRuntime javaRuntime) {
+		try (GenericContainer<?> container = createContainer(javaRuntime, "spring-boot-loader-tests-app", null)) {
 			container.start();
 			System.out.println(this.output.toUtf8String());
 			assertThat(this.output.toUtf8String()).contains(">>>>> 287649 BYTES from")
+				.contains(">>>>> gh-7161 [/gh-7161/example.txt]")
 				.doesNotContain("WARNING:")
 				.doesNotContain("illegal")
 				.doesNotContain("jar written to temp");
 		}
 	}
 
-	private GenericContainer<?> createContainer(JavaRuntime javaRuntime) {
+	@ParameterizedTest
+	@MethodSource("javaRuntimes")
+	void runSignedJar(JavaRuntime javaRuntime) {
+		try (GenericContainer<?> container = createContainer(javaRuntime, "spring-boot-loader-tests-signed-jar",
+				null)) {
+			container.start();
+			System.out.println(this.output.toUtf8String());
+			assertThat(this.output.toUtf8String()).contains("Legion of the Bouncy Castle");
+		}
+	}
+
+	@ParameterizedTest
+	@MethodSource("javaRuntimes")
+	void runSignedJarWhenUnpack(JavaRuntime javaRuntime) {
+		try (GenericContainer<?> container = createContainer(javaRuntime, "spring-boot-loader-tests-signed-jar",
+				"unpack")) {
+			container.start();
+			System.out.println(this.output.toUtf8String());
+			assertThat(this.output.toUtf8String()).contains("Legion of the Bouncy Castle");
+		}
+	}
+
+	private GenericContainer<?> createContainer(JavaRuntime javaRuntime, String name, String classifier) {
 		return javaRuntime.getContainer()
 			.withLogConsumer(this.output)
-			.withCopyFileToContainer(MountableFile.forHostPath(findApplication().toPath()), "/app.jar")
+			.withCopyFileToContainer(findApplication(name, classifier), "/app.jar")
 			.withStartupCheckStrategy(new OneShotStartupCheckStrategy().withTimeout(Duration.ofMinutes(5)))
 			.withCommand("java", "-jar", "app.jar");
 	}
 
-	private File findApplication() {
-		String name = String.format("build/%1$s/build/libs/%1$s.jar", "spring-boot-loader-tests-app");
-		File jar = new File(name);
-		Assert.state(jar.isFile(), () -> "Could not find " + name + ". Have you built it?");
+	private MountableFile findApplication(String name, String classifier) {
+		return MountableFile.forHostPath(findJarFile(name, classifier).toPath());
+	}
+
+	private File findJarFile(String name, String classifier) {
+		classifier = (classifier != null) ? "-" + classifier : "";
+		String path = String.format("build/%1$s/build/libs/%1$s%2$s.jar", name, classifier);
+		File jar = new File(path);
+		Assert.state(jar.isFile(), () -> "Could not find " + path + ". Have you built it?");
 		return jar;
 	}
 
 	static Stream<JavaRuntime> javaRuntimes() {
 		List<JavaRuntime> javaRuntimes = new ArrayList<>();
 		javaRuntimes.add(JavaRuntime.openJdk(JavaVersion.SEVENTEEN));
-		javaRuntimes.add(JavaRuntime.openJdk(JavaVersion.NINETEEN));
+		javaRuntimes.add(JavaRuntime.openJdk(JavaVersion.TWENTY));
 		javaRuntimes.add(JavaRuntime.oracleJdk17());
+		javaRuntimes.add(JavaRuntime.openJdkEarlyAccess(JavaVersion.TWENTY_ONE));
 		return javaRuntimes.stream().filter(JavaRuntime::isCompatible);
 	}
 
@@ -111,6 +141,13 @@ class LoaderIntegrationTests {
 			return this.name;
 		}
 
+		static JavaRuntime openJdkEarlyAccess(JavaVersion version) {
+			String imageVersion = version.toString();
+			DockerImageName image = DockerImageName.parse("openjdk:%s-ea-jdk".formatted(imageVersion));
+			return new JavaRuntime("OpenJDK Early Access " + imageVersion, version,
+					() -> new GenericContainer<>(image));
+		}
+
 		static JavaRuntime openJdk(JavaVersion version) {
 			String imageVersion = version.toString();
 			DockerImageName image = DockerImageName.parse("bellsoft/liberica-openjdk-debian:" + imageVersion);
@@ -118,8 +155,11 @@ class LoaderIntegrationTests {
 		}
 
 		static JavaRuntime oracleJdk17() {
-			ImageFromDockerfile image = new ImageFromDockerfile("spring-boot-loader/oracle-jdk-17")
-				.withFileFromFile("Dockerfile", new File("src/intTest/resources/conf/oracle-jdk-17/Dockerfile"));
+			ImageFromDockerfile image = new ImageFromDockerfile("spring-boot-loader/oracle-jdk");
+			image.withFileFromFile("Dockerfile", new File("src/intTest/resources/conf/oracle-jdk-17/Dockerfile"));
+			for (File file : new File("build/downloads/jdk/oracle").listFiles()) {
+				image.withFileFromFile("downloads/" + file.getName(), file);
+			}
 			return new JavaRuntime("Oracle JDK 17", JavaVersion.SEVENTEEN, () -> new GenericContainer<>(image));
 		}
 

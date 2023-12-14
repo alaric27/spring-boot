@@ -17,6 +17,7 @@
 package org.springframework.boot;
 
 import java.lang.StackWalker.StackFrame;
+import java.lang.management.ManagementFactory;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -30,10 +31,13 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.crac.management.CRaCMXBean;
 
 import org.springframework.aot.AotDetector;
 import org.springframework.beans.BeansException;
@@ -64,6 +68,9 @@ import org.springframework.context.annotation.AnnotationConfigUtils;
 import org.springframework.context.annotation.ClassPathBeanDefinitionScanner;
 import org.springframework.context.annotation.ConfigurationClassPostProcessor;
 import org.springframework.context.aot.AotApplicationContextInitializer;
+import org.springframework.context.event.ApplicationContextEvent;
+import org.springframework.context.event.ContextClosedEvent;
+import org.springframework.context.event.ContextRefreshedEvent;
 import org.springframework.context.support.AbstractApplicationContext;
 import org.springframework.context.support.GenericApplicationContext;
 import org.springframework.core.GenericTypeResolver;
@@ -88,6 +95,7 @@ import org.springframework.util.CollectionUtils;
 import org.springframework.util.ObjectUtils;
 import org.springframework.util.ReflectionUtils;
 import org.springframework.util.StringUtils;
+import org.springframework.util.function.ThrowingConsumer;
 import org.springframework.util.function.ThrowingSupplier;
 
 /**
@@ -161,6 +169,9 @@ import org.springframework.util.function.ThrowingSupplier;
  * @author Brian Clozel
  * @author Ethan Rubinson
  * @author Chris Bono
+ * @author Moritz Halbritter
+ * @author Tadaya Tsuyukubo
+ * @author Yanming Zhou
  * @since 1.0.0
  * @see #run(Class, String[])
  * @see #run(Class[], String[])
@@ -253,6 +264,8 @@ public class SpringApplication {
 	 */
 	private ApplicationStartup applicationStartup = ApplicationStartup.DEFAULT;
 
+	private boolean keepAlive;
+
 	/**
 	 * Create a new {@link SpringApplication} instance. The application context will load
 	 * beans from the specified primary sources (see {@link SpringApplication class-level}
@@ -319,7 +332,10 @@ public class SpringApplication {
 	 * @return a running {@link ApplicationContext}
 	 */
 	public ConfigurableApplicationContext run(String... args) {
-		long startTime = System.nanoTime();
+		Startup startup = Startup.create();
+		if (this.registerShutdownHook) {
+			SpringApplication.shutdownHook.enableShutdownHookAddition();
+		}
 		// 创建启动上下文
 		DefaultBootstrapContext bootstrapContext = createBootstrapContext();
 		ConfigurableApplicationContext context = null;
@@ -347,11 +363,11 @@ public class SpringApplication {
 
 			// 执行 Spring 容器的初始化的后置逻辑。默认实现为空。
 			afterRefresh(context, applicationArguments);
-			Duration timeTakenToStartup = Duration.ofNanos(System.nanoTime() - startTime);
+			startup.started();
 			if (this.logStartupInfo) {
-				new StartupInfoLogger(this.mainApplicationClass).logStarted(getApplicationLog(), timeTakenToStartup);
+				new StartupInfoLogger(this.mainApplicationClass).logStarted(getApplicationLog(), startup);
 			}
-			listeners.started(context, timeTakenToStartup);
+			listeners.started(context, startup.timeTakenToStarted());
 
 			// 执行所有 Runner 运行器
 			callRunners(context, applicationArguments);
@@ -365,8 +381,7 @@ public class SpringApplication {
 		}
 		try {
 			if (context.isRunning()) {
-				Duration timeTakenToReady = Duration.ofNanos(System.nanoTime() - startTime);
-				listeners.ready(context, timeTakenToReady);
+				listeners.ready(context, startup.ready());
 			}
 		}
 		catch (Throwable ex) {
@@ -453,6 +468,9 @@ public class SpringApplication {
 		if (this.lazyInitialization) {
 			context.addBeanFactoryPostProcessor(new LazyInitializationBeanFactoryPostProcessor());
 		}
+		if (this.keepAlive) {
+			context.addApplicationListener(new KeepAlive());
+		}
 		context.addBeanFactoryPostProcessor(new PropertySourceOrderingBeanFactoryPostProcessor(context));
 		if (!AotDetector.useGeneratedArtifacts()) {
 			// Load the sources
@@ -469,6 +487,10 @@ public class SpringApplication {
 					initializers.stream().filter(AotApplicationContextInitializer.class::isInstance).toList());
 			if (aotInitializers.isEmpty()) {
 				String initializerClassName = this.mainApplicationClass.getName() + "__ApplicationContextInitializer";
+				Assert.state(ClassUtils.isPresent(initializerClassName, getClassLoader()),
+						"You are starting the application with AOT mode enabled but AOT processing hasn't happened. "
+								+ "Please build your application with enabled AOT processing first, "
+								+ "or remove the system property 'spring.aot.enabled' to run the application in regular mode");
 				aotInitializers.add(AotApplicationContextInitializer.forInitializerClasses(initializerClassName));
 			}
 			initializers.removeAll(aotInitializers);
@@ -619,8 +641,8 @@ public class SpringApplication {
 	}
 
 	/**
-	 * Apply any relevant post processing the {@link ApplicationContext}. Subclasses can
-	 * apply additional processing as required.
+	 * Apply any relevant post-processing to the {@link ApplicationContext}. Subclasses
+	 * can apply additional processing as required.
 	 * @param context the application context
 	 */
 	protected void postProcessApplicationContext(ConfigurableApplicationContext context) {
@@ -794,18 +816,14 @@ public class SpringApplication {
 	}
 
 	private void callRunners(ApplicationContext context, ApplicationArguments args) {
-		List<Object> runners = new ArrayList<>();
-		runners.addAll(context.getBeansOfType(ApplicationRunner.class).values());
-		runners.addAll(context.getBeansOfType(CommandLineRunner.class).values());
-		AnnotationAwareOrderComparator.sort(runners);
-		for (Object runner : new LinkedHashSet<>(runners)) {
+		context.getBeanProvider(Runner.class).orderedStream().forEach((runner) -> {
 			if (runner instanceof ApplicationRunner applicationRunner) {
 				callRunner(applicationRunner, args);
 			}
 			if (runner instanceof CommandLineRunner commandLineRunner) {
 				callRunner(commandLineRunner, args);
 			}
-		}
+		});
 	}
 
 	private void callRunner(ApplicationRunner runner, ApplicationArguments args) {
@@ -1326,6 +1344,27 @@ public class SpringApplication {
 	}
 
 	/**
+	 * Whether to keep the application alive even if there are no more non-daemon threads.
+	 * @return whether to keep the application alive even if there are no more non-daemon
+	 * threads
+	 * @since 3.2.0
+	 */
+	public boolean isKeepAlive() {
+		return this.keepAlive;
+	}
+
+	/**
+	 * Set whether to keep the application alive even if there are no more non-daemon
+	 * threads.
+	 * @param keepAlive whether to keep the application alive even if there are no more
+	 * non-daemon threads
+	 * @since 3.2.0
+	 */
+	public void setKeepAlive(boolean keepAlive) {
+		this.keepAlive = keepAlive;
+	}
+
+	/**
 	 * Return a {@link SpringApplicationShutdownHandlers} instance that can be used to add
 	 * or remove handlers that perform actions before the JVM is shutdown.
 	 * @return a {@link SpringApplicationShutdownHandlers} instance
@@ -1411,6 +1450,22 @@ public class SpringApplication {
 	}
 
 	/**
+	 * Create an application from an existing {@code main} method that can run with
+	 * additional {@code @Configuration} or bean classes. This method can be helpful when
+	 * writing a test harness that needs to start an application with additional
+	 * configuration.
+	 * @param main the main method entry point that runs the {@link SpringApplication}
+	 * @return a {@link SpringApplication.Augmented} instance that can be used to add
+	 * configuration and run the application
+	 * @since 3.1.0
+	 * @see #withHook(SpringApplicationHook, Runnable)
+	 */
+	public static SpringApplication.Augmented from(ThrowingConsumer<String[]> main) {
+		Assert.notNull(main, "Main must not be null");
+		return new Augmented(main, Collections.emptySet());
+	}
+
+	/**
 	 * Perform the given action with the given {@link SpringApplicationHook} attached if
 	 * the action triggers an {@link SpringApplication#run(String...) application run}.
 	 * @param hook the hook to apply
@@ -1455,6 +1510,95 @@ public class SpringApplication {
 		List<E> list = new ArrayList<>(elements);
 		list.sort(AnnotationAwareOrderComparator.INSTANCE);
 		return new LinkedHashSet<>(list);
+	}
+
+	/**
+	 * Used to configure and run an augmented {@link SpringApplication} where additional
+	 * configuration should be applied.
+	 *
+	 * @since 3.1.0
+	 */
+	public static class Augmented {
+
+		private final ThrowingConsumer<String[]> main;
+
+		private final Set<Class<?>> sources;
+
+		Augmented(ThrowingConsumer<String[]> main, Set<Class<?>> sources) {
+			this.main = main;
+			this.sources = Set.copyOf(sources);
+		}
+
+		/**
+		 * Return a new {@link SpringApplication.Augmented} instance with additional
+		 * sources that should be applied when the application runs.
+		 * @param sources the sources that should be applied
+		 * @return a new {@link SpringApplication.Augmented} instance
+		 */
+		public Augmented with(Class<?>... sources) {
+			LinkedHashSet<Class<?>> merged = new LinkedHashSet<>(this.sources);
+			merged.addAll(Arrays.asList(sources));
+			return new Augmented(this.main, merged);
+		}
+
+		/**
+		 * Run the application using the given args.
+		 * @param args the main method args
+		 * @return the running {@link ApplicationContext}
+		 */
+		public SpringApplication.Running run(String... args) {
+			RunListener runListener = new RunListener();
+			SpringApplicationHook hook = new SingleUseSpringApplicationHook((springApplication) -> {
+				springApplication.addPrimarySources(this.sources);
+				return runListener;
+			});
+			withHook(hook, () -> this.main.accept(args));
+			return runListener;
+		}
+
+		/**
+		 * {@link SpringApplicationRunListener} to capture {@link Running} application
+		 * details.
+		 */
+		private static class RunListener implements SpringApplicationRunListener, Running {
+
+			private final List<ConfigurableApplicationContext> contexts = Collections
+				.synchronizedList(new ArrayList<>());
+
+			@Override
+			public void contextLoaded(ConfigurableApplicationContext context) {
+				this.contexts.add(context);
+			}
+
+			@Override
+			public ConfigurableApplicationContext getApplicationContext() {
+				List<ConfigurableApplicationContext> rootContexts = this.contexts.stream()
+					.filter((context) -> context.getParent() == null)
+					.toList();
+				Assert.state(!rootContexts.isEmpty(), "No root application context located");
+				Assert.state(rootContexts.size() == 1, "No unique root application context located");
+				return rootContexts.get(0);
+			}
+
+		}
+
+	}
+
+	/**
+	 * Provides access to details of a {@link SpringApplication} run using
+	 * {@link Augmented#run(String...)}.
+	 *
+	 * @since 3.1.0
+	 */
+	public interface Running {
+
+		/**
+		 * Return the root {@link ConfigurableApplicationContext} of the running
+		 * application.
+		 * @return the root application context
+		 */
+		ConfigurableApplicationContext getApplicationContext();
+
 	}
 
 	/**
@@ -1523,6 +1667,162 @@ public class SpringApplication {
 		 */
 		public ConfigurableApplicationContext getApplicationContext() {
 			return this.applicationContext;
+		}
+
+	}
+
+	private static final class SingleUseSpringApplicationHook implements SpringApplicationHook {
+
+		private final AtomicBoolean used = new AtomicBoolean();
+
+		private final SpringApplicationHook delegate;
+
+		private SingleUseSpringApplicationHook(SpringApplicationHook delegate) {
+			this.delegate = delegate;
+		}
+
+		@Override
+		public SpringApplicationRunListener getRunListener(SpringApplication springApplication) {
+			return this.used.compareAndSet(false, true) ? this.delegate.getRunListener(springApplication) : null;
+		}
+
+	}
+
+	/**
+	 * Starts a non-daemon thread to keep the JVM alive on {@link ContextRefreshedEvent}.
+	 * Stops the thread on {@link ContextClosedEvent}.
+	 */
+	private static final class KeepAlive implements ApplicationListener<ApplicationContextEvent> {
+
+		private final AtomicReference<Thread> thread = new AtomicReference<>();
+
+		@Override
+		public void onApplicationEvent(ApplicationContextEvent event) {
+			if (event instanceof ContextRefreshedEvent) {
+				startKeepAliveThread();
+			}
+			else if (event instanceof ContextClosedEvent) {
+				stopKeepAliveThread();
+			}
+		}
+
+		private void startKeepAliveThread() {
+			Thread thread = new Thread(() -> {
+				while (true) {
+					try {
+						Thread.sleep(Long.MAX_VALUE);
+					}
+					catch (InterruptedException ex) {
+						break;
+					}
+				}
+			});
+			if (this.thread.compareAndSet(null, thread)) {
+				thread.setDaemon(false);
+				thread.setName("keep-alive");
+				thread.start();
+			}
+		}
+
+		private void stopKeepAliveThread() {
+			Thread thread = this.thread.getAndSet(null);
+			if (thread == null) {
+				return;
+			}
+			thread.interrupt();
+		}
+
+	}
+
+	abstract static class Startup {
+
+		private Duration timeTakenToStarted;
+
+		abstract long startTime();
+
+		abstract Long processUptime();
+
+		abstract String action();
+
+		final Duration started() {
+			long now = System.currentTimeMillis();
+			this.timeTakenToStarted = Duration.ofMillis(now - startTime());
+			return this.timeTakenToStarted;
+		}
+
+		private Duration ready() {
+			long now = System.currentTimeMillis();
+			return Duration.ofMillis(now - startTime());
+		}
+
+		Duration timeTakenToStarted() {
+			return this.timeTakenToStarted;
+		}
+
+		static Startup create() {
+			ClassLoader classLoader = Startup.class.getClassLoader();
+			return (ClassUtils.isPresent("jdk.crac.management.CRaCMXBean", classLoader)
+					&& ClassUtils.isPresent("org.crac.management.CRaCMXBean", classLoader))
+							? new CoordinatedRestoreAtCheckpointStartup() : new StandardStartup();
+		}
+
+	}
+
+	private static class CoordinatedRestoreAtCheckpointStartup extends Startup {
+
+		private final StandardStartup fallback = new StandardStartup();
+
+		@Override
+		Long processUptime() {
+			long uptime = CRaCMXBean.getCRaCMXBean().getUptimeSinceRestore();
+			return (uptime >= 0) ? uptime : this.fallback.processUptime();
+		}
+
+		@Override
+		String action() {
+			if (restoreTime() >= 0) {
+				return "Restored";
+			}
+			return this.fallback.action();
+		}
+
+		private long restoreTime() {
+			return CRaCMXBean.getCRaCMXBean().getRestoreTime();
+		}
+
+		@Override
+		long startTime() {
+			long restoreTime = restoreTime();
+			if (restoreTime >= 0) {
+				return restoreTime;
+			}
+			return this.fallback.startTime();
+		}
+
+	}
+
+	private static class StandardStartup extends Startup {
+
+		private final Long startTime = System.currentTimeMillis();
+
+		@Override
+		long startTime() {
+			return this.startTime;
+		}
+
+		@Override
+		Long processUptime() {
+			try {
+				return ManagementFactory.getRuntimeMXBean().getUptime();
+			}
+			catch (Throwable ex) {
+				return null;
+			}
+		}
+
+		@Override
+		String action() {
+			return "Started";
 		}
 
 	}

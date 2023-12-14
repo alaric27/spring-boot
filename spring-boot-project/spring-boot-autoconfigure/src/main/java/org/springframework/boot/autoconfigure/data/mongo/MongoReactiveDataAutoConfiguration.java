@@ -26,7 +26,6 @@ import org.bson.codecs.Codec;
 import org.bson.codecs.configuration.CodecRegistry;
 import reactor.core.publisher.Mono;
 
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
@@ -36,7 +35,6 @@ import org.springframework.boot.autoconfigure.mongo.MongoConnectionDetails;
 import org.springframework.boot.autoconfigure.mongo.MongoConnectionDetails.GridFs;
 import org.springframework.boot.autoconfigure.mongo.MongoProperties;
 import org.springframework.boot.autoconfigure.mongo.MongoReactiveAutoConfiguration;
-import org.springframework.boot.autoconfigure.mongo.PropertiesMongoConnectionDetails;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
@@ -69,6 +67,7 @@ import org.springframework.util.StringUtils;
  * @author Moritz Halbritter
  * @author Andy Wilkinson
  * @author Phillip Webb
+ * @author Scott Frederick
  * @since 2.0.0
  */
 @AutoConfiguration(after = MongoReactiveAutoConfiguration.class)
@@ -80,17 +79,19 @@ public class MongoReactiveDataAutoConfiguration {
 
 	private final MongoConnectionDetails connectionDetails;
 
-	MongoReactiveDataAutoConfiguration(MongoProperties properties,
-			ObjectProvider<MongoConnectionDetails> connectionDetails) {
-		this.connectionDetails = connectionDetails
-			.getIfAvailable(() -> new PropertiesMongoConnectionDetails(properties));
+	MongoReactiveDataAutoConfiguration(MongoConnectionDetails connectionDetails) {
+		this.connectionDetails = connectionDetails;
 	}
 
 	@Bean
 	@ConditionalOnMissingBean(ReactiveMongoDatabaseFactory.class)
-	public SimpleReactiveMongoDatabaseFactory reactiveMongoDatabaseFactory(MongoClient mongo) {
-		return new SimpleReactiveMongoDatabaseFactory(mongo,
-				this.connectionDetails.getConnectionString().getDatabase());
+	public SimpleReactiveMongoDatabaseFactory reactiveMongoDatabaseFactory(MongoClient mongo,
+			MongoProperties properties) {
+		String database = properties.getDatabase();
+		if (database == null) {
+			database = this.connectionDetails.getConnectionString().getDatabase();
+		}
+		return new SimpleReactiveMongoDatabaseFactory(mongo, database);
 	}
 
 	@Bean

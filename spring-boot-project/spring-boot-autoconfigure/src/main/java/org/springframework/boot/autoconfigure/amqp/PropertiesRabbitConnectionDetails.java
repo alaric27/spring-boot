@@ -25,13 +25,12 @@ import java.util.List;
  * @author Moritz Halbritter
  * @author Andy Wilkinson
  * @author Phillip Webb
- * @since 3.1.0
  */
-public class PropertiesRabbitConnectionDetails implements RabbitConnectionDetails {
+class PropertiesRabbitConnectionDetails implements RabbitConnectionDetails {
 
 	private final RabbitProperties properties;
 
-	public PropertiesRabbitConnectionDetails(RabbitProperties properties) {
+	PropertiesRabbitConnectionDetails(RabbitProperties properties) {
 		this.properties = properties;
 	}
 
@@ -54,8 +53,10 @@ public class PropertiesRabbitConnectionDetails implements RabbitConnectionDetail
 	public List<Address> getAddresses() {
 		List<Address> addresses = new ArrayList<>();
 		for (String address : this.properties.determineAddresses().split(",")) {
-			String[] components = address.split(":");
-			addresses.add(new Address(components[0], Integer.parseInt(components[1])));
+			int portSeparatorIndex = address.lastIndexOf(':');
+			String host = address.substring(0, portSeparatorIndex);
+			String port = address.substring(portSeparatorIndex + 1);
+			addresses.add(new Address(host, Integer.parseInt(port)));
 		}
 		return addresses;
 	}

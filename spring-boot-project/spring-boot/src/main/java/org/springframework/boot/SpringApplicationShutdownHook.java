@@ -62,10 +62,16 @@ class SpringApplicationShutdownHook implements Runnable {
 
 	private final AtomicBoolean shutdownHookAdded = new AtomicBoolean();
 
+	private volatile boolean shutdownHookAdditionEnabled = false;
+
 	private boolean inProgress;
 
 	SpringApplicationShutdownHandlers getHandlers() {
 		return this.handlers;
+	}
+
+	void enableShutdownHookAddition() {
+		this.shutdownHookAdditionEnabled = true;
 	}
 
 	void registerApplicationContext(ConfigurableApplicationContext context) {
@@ -78,7 +84,7 @@ class SpringApplicationShutdownHook implements Runnable {
 	}
 
 	private void addRuntimeShutdownHookIfNecessary() {
-		if (this.shutdownHookAdded.compareAndSet(false, true)) {
+		if (this.shutdownHookAdditionEnabled && this.shutdownHookAdded.compareAndSet(false, true)) {
 			addRuntimeShutdownHook();
 		}
 	}
@@ -163,13 +169,14 @@ class SpringApplicationShutdownHook implements Runnable {
 	/**
 	 * The handler actions for this shutdown hook.
 	 */
-	private class Handlers implements SpringApplicationShutdownHandlers {
+	private class Handlers implements SpringApplicationShutdownHandlers, Runnable {
 
 		private final Set<Runnable> actions = Collections.newSetFromMap(new IdentityHashMap<>());
 
 		@Override
 		public void add(Runnable action) {
 			Assert.notNull(action, "Action must not be null");
+			addRuntimeShutdownHookIfNecessary();
 			synchronized (SpringApplicationShutdownHook.class) {
 				assertNotInProgress();
 				this.actions.add(action);
@@ -187,6 +194,12 @@ class SpringApplicationShutdownHook implements Runnable {
 
 		Set<Runnable> getActions() {
 			return this.actions;
+		}
+
+		@Override
+		public void run() {
+			SpringApplicationShutdownHook.this.run();
+			SpringApplicationShutdownHook.this.reset();
 		}
 
 	}
